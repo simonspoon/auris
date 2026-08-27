@@ -122,7 +122,9 @@ A third, independent claim holds even if the first two vanished. The
 speech-activity heartbeat mesa's silence timer needs, argued in the next
 section, is computed by the same VAD that segmentation runs. Segmentation
 and the heartbeat come from one component, so the cost of running a VAD is
-paid once for two reasons, not two costs for two features.
+paid once for two reasons, not two costs for two features. That cost is also
+small in the terms this project measures things in: `silero_vad.onnx` is
+about 630 KB, against the 652 MB encoder the daemon exists to keep loaded.
 
 So the engine change removed one of segmentation's two justifications and
 left the other standing, and the one it left is the one that was never
@@ -286,9 +288,12 @@ out is `speech.rs`, and it is the speech one.
 
 ## What this does not decide
 
-- The VAD's own parameters — silence threshold, minimum speech duration,
-  padding — are a tuning problem for the task that builds segmentation, not
-  settled here.
+- The VAD's own parameters are a tuning problem for the task that builds
+  segmentation, not settled here. `SileroVadModelConfig` in the Rust crate
+  exposes `threshold`, `min_silence_duration`, `min_speech_duration`,
+  `max_speech_duration` and `window_size`; `min_silence_duration` is the one
+  that decides where an utterance ends, and it is the knob mesa's
+  `live.auto-send-ms` has to be reconciled with rather than duplicated.
 - Whether the `speech` heartbeat cadence needs a minimum interval, so a
   stuttering VAD cannot flood a reader, is left to that task too.
 - The task that binds sherpa-onnx and holds the recognizer warm is 933.
