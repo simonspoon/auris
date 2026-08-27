@@ -70,6 +70,8 @@ Observations:
 - **kokoro** flips from always-wrong (tiny/base) to always-right (small/medium/parakeet) — it's a real word/brand already in the larger models' vocabulary, so it's not really testing the prompt mechanism, it's testing model size.
 - **auris** and **mesa** are the terms the prompt actually fixes cleanly: auris goes from 0% to 100% in every whisper config once prompted; mesa goes from ~67% to 100%.
 
+**Sample sizes are small — read the per-term rows with their `ref` counts.** There are 13 name occurrences total across the 8 utterances: mesa 3, auris 3, khora 2, qorvex 2, helios 2, **kokoro 1**. A per-term percentage is therefore a count, not a rate: "kokoro 100%" means one occurrence was right, and "khora 50%" means one of two. The kokoro finding in particular (wrong on tiny/base, right on small/medium/parakeet) rests on a single occurrence per config and should be treated as a hint to test further, not an established result. The aggregate name-accuracy column is over all 13 and is the more robust number. If this fixture set is reused, repeat kokoro and khora two or three more times.
+
 ## 3. What the engines actually heard
 
 Quotes are raw transcript lines from `spike/results/raw/<config>.tsv`.
