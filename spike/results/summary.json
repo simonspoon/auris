@@ -1,0 +1,470 @@
+[
+  {
+    "config": "whisper-tiny.en-noprompt",
+    "engine": "whisper",
+    "model": "ggml-tiny.en.bin",
+    "prompt": false,
+    "audio_seconds": 45.429002,
+    "warm_decode_seconds": 6.957525014877319,
+    "rtf_warm": 0.15315161479614542,
+    "cold_first_decode_seconds": 0.76,
+    "peak_rss_mb": 215.13,
+    "model_size_mb": 77.7,
+    "status": "ok",
+    "rtf_decode_only": 0.10488718198123746,
+    "decode_only_seconds": 4.76492,
+    "wer": 0.12,
+    "sub": 16,
+    "del": 1,
+    "ins": 1,
+    "name_accuracy": 0.3076923076923077,
+    "per_term": {
+      "mesa": {
+        "ref": 3,
+        "correct": 2,
+        "accuracy": 0.6666666666666666
+      },
+      "auris": {
+        "ref": 3,
+        "correct": 0,
+        "accuracy": 0.0
+      },
+      "khora": {
+        "ref": 2,
+        "correct": 0,
+        "accuracy": 0.0
+      },
+      "qorvex": {
+        "ref": 2,
+        "correct": 0,
+        "accuracy": 0.0
+      },
+      "helios": {
+        "ref": 2,
+        "correct": 2,
+        "accuracy": 1.0
+      },
+      "kokoro": {
+        "ref": 1,
+        "correct": 0,
+        "accuracy": 0.0
+      }
+    }
+  },
+  {
+    "config": "whisper-tiny.en-prompt",
+    "engine": "whisper",
+    "model": "ggml-tiny.en.bin",
+    "prompt": true,
+    "audio_seconds": 45.429002,
+    "warm_decode_seconds": 7.393556833267212,
+    "rtf_warm": 0.16274970850707246,
+    "cold_first_decode_seconds": 0.72,
+    "peak_rss_mb": 223.67,
+    "model_size_mb": 77.7,
+    "status": "ok",
+    "rtf_decode_only": 0.11181117295951164,
+    "decode_only_seconds": 5.07947,
+    "wer": 0.13333333333333333,
+    "sub": 10,
+    "del": 4,
+    "ins": 6,
+    "name_accuracy": 0.6153846153846154,
+    "per_term": {
+      "mesa": {
+        "ref": 3,
+        "correct": 3,
+        "accuracy": 1.0
+      },
+      "auris": {
+        "ref": 3,
+        "correct": 3,
+        "accuracy": 1.0
+      },
+      "khora": {
+        "ref": 2,
+        "correct": 0,
+        "accuracy": 0.0
+      },
+      "qorvex": {
+        "ref": 2,
+        "correct": 0,
+        "accuracy": 0.0
+      },
+      "helios": {
+        "ref": 2,
+        "correct": 2,
+        "accuracy": 1.0
+      },
+      "kokoro": {
+        "ref": 1,
+        "correct": 0,
+        "accuracy": 0.0
+      }
+    }
+  },
+  {
+    "config": "whisper-base.en-noprompt",
+    "engine": "whisper",
+    "model": "ggml-base.en.bin",
+    "prompt": false,
+    "audio_seconds": 45.429002,
+    "warm_decode_seconds": 10.881590843200684,
+    "rtf_warm": 0.23952960364836287,
+    "cold_first_decode_seconds": 1.13,
+    "peak_rss_mb": 328.59,
+    "model_size_mb": 147.96,
+    "status": "ok",
+    "rtf_decode_only": 0.1883495041339451,
+    "decode_only_seconds": 8.55653,
+    "wer": 0.09333333333333334,
+    "sub": 11,
+    "del": 2,
+    "ins": 1,
+    "name_accuracy": 0.3076923076923077,
+    "per_term": {
+      "mesa": {
+        "ref": 3,
+        "correct": 2,
+        "accuracy": 0.6666666666666666
+      },
+      "auris": {
+        "ref": 3,
+        "correct": 0,
+        "accuracy": 0.0
+      },
+      "khora": {
+        "ref": 2,
+        "correct": 0,
+        "accuracy": 0.0
+      },
+      "qorvex": {
+        "ref": 2,
+        "correct": 0,
+        "accuracy": 0.0
+      },
+      "helios": {
+        "ref": 2,
+        "correct": 2,
+        "accuracy": 1.0
+      },
+      "kokoro": {
+        "ref": 1,
+        "correct": 0,
+        "accuracy": 0.0
+      }
+    }
+  },
+  {
+    "config": "whisper-base.en-prompt",
+    "engine": "whisper",
+    "model": "ggml-base.en.bin",
+    "prompt": true,
+    "audio_seconds": 45.429002,
+    "warm_decode_seconds": 11.09543776512146,
+    "rtf_warm": 0.24423688121349135,
+    "cold_first_decode_seconds": 1.25,
+    "peak_rss_mb": 337.9,
+    "model_size_mb": 147.96,
+    "status": "ok",
+    "rtf_decode_only": 0.19493516498557462,
+    "decode_only_seconds": 8.855709999999998,
+    "wer": 0.04666666666666667,
+    "sub": 5,
+    "del": 2,
+    "ins": 0,
+    "name_accuracy": 0.7692307692307693,
+    "per_term": {
+      "mesa": {
+        "ref": 3,
+        "correct": 3,
+        "accuracy": 1.0
+      },
+      "auris": {
+        "ref": 3,
+        "correct": 3,
+        "accuracy": 1.0
+      },
+      "khora": {
+        "ref": 2,
+        "correct": 0,
+        "accuracy": 0.0
+      },
+      "qorvex": {
+        "ref": 2,
+        "correct": 2,
+        "accuracy": 1.0
+      },
+      "helios": {
+        "ref": 2,
+        "correct": 2,
+        "accuracy": 1.0
+      },
+      "kokoro": {
+        "ref": 1,
+        "correct": 0,
+        "accuracy": 0.0
+      }
+    }
+  },
+  {
+    "config": "whisper-small.en-noprompt",
+    "engine": "whisper",
+    "model": "ggml-small.en.bin",
+    "prompt": false,
+    "audio_seconds": 45.429002,
+    "warm_decode_seconds": 29.09446406364441,
+    "rtf_warm": 0.64043810743728,
+    "cold_first_decode_seconds": 3.15,
+    "peak_rss_mb": 824.92,
+    "model_size_mb": 487.61,
+    "status": "ok",
+    "rtf_decode_only": 0.5703176134047585,
+    "decode_only_seconds": 25.90896,
+    "wer": 0.07333333333333333,
+    "sub": 8,
+    "del": 1,
+    "ins": 2,
+    "name_accuracy": 0.46153846153846156,
+    "per_term": {
+      "mesa": {
+        "ref": 3,
+        "correct": 3,
+        "accuracy": 1.0
+      },
+      "auris": {
+        "ref": 3,
+        "correct": 0,
+        "accuracy": 0.0
+      },
+      "khora": {
+        "ref": 2,
+        "correct": 0,
+        "accuracy": 0.0
+      },
+      "qorvex": {
+        "ref": 2,
+        "correct": 0,
+        "accuracy": 0.0
+      },
+      "helios": {
+        "ref": 2,
+        "correct": 2,
+        "accuracy": 1.0
+      },
+      "kokoro": {
+        "ref": 1,
+        "correct": 1,
+        "accuracy": 1.0
+      }
+    }
+  },
+  {
+    "config": "whisper-small.en-prompt",
+    "engine": "whisper",
+    "model": "ggml-small.en.bin",
+    "prompt": true,
+    "audio_seconds": 45.429002,
+    "warm_decode_seconds": 29.840172052383423,
+    "rtf_warm": 0.6568529075849702,
+    "cold_first_decode_seconds": 3.4,
+    "peak_rss_mb": 833.63,
+    "model_size_mb": 487.61,
+    "status": "ok",
+    "rtf_decode_only": 0.5874681112299144,
+    "decode_only_seconds": 26.68809,
+    "wer": 0.03333333333333333,
+    "sub": 4,
+    "del": 1,
+    "ins": 0,
+    "name_accuracy": 0.7692307692307693,
+    "per_term": {
+      "mesa": {
+        "ref": 3,
+        "correct": 3,
+        "accuracy": 1.0
+      },
+      "auris": {
+        "ref": 3,
+        "correct": 3,
+        "accuracy": 1.0
+      },
+      "khora": {
+        "ref": 2,
+        "correct": 1,
+        "accuracy": 0.5
+      },
+      "qorvex": {
+        "ref": 2,
+        "correct": 0,
+        "accuracy": 0.0
+      },
+      "helios": {
+        "ref": 2,
+        "correct": 2,
+        "accuracy": 1.0
+      },
+      "kokoro": {
+        "ref": 1,
+        "correct": 1,
+        "accuracy": 1.0
+      }
+    }
+  },
+  {
+    "config": "whisper-medium.en-noprompt",
+    "engine": "whisper",
+    "model": "ggml-medium.en.bin",
+    "prompt": false,
+    "audio_seconds": 45.429002,
+    "warm_decode_seconds": 88.82256579399109,
+    "rtf_warm": 1.9551951811310118,
+    "cold_first_decode_seconds": 10.19,
+    "peak_rss_mb": 2223.32,
+    "model_size_mb": 1533.77,
+    "status": "ok",
+    "rtf_decode_only": 1.8619341450644238,
+    "decode_only_seconds": 84.58581,
+    "wer": 0.06666666666666667,
+    "sub": 9,
+    "del": 1,
+    "ins": 0,
+    "name_accuracy": 0.38461538461538464,
+    "per_term": {
+      "mesa": {
+        "ref": 3,
+        "correct": 2,
+        "accuracy": 0.6666666666666666
+      },
+      "auris": {
+        "ref": 3,
+        "correct": 0,
+        "accuracy": 0.0
+      },
+      "khora": {
+        "ref": 2,
+        "correct": 0,
+        "accuracy": 0.0
+      },
+      "qorvex": {
+        "ref": 2,
+        "correct": 0,
+        "accuracy": 0.0
+      },
+      "helios": {
+        "ref": 2,
+        "correct": 2,
+        "accuracy": 1.0
+      },
+      "kokoro": {
+        "ref": 1,
+        "correct": 1,
+        "accuracy": 1.0
+      }
+    }
+  },
+  {
+    "config": "whisper-medium.en-prompt",
+    "engine": "whisper",
+    "model": "ggml-medium.en.bin",
+    "prompt": true,
+    "audio_seconds": 45.429002,
+    "warm_decode_seconds": 98.70256209373474,
+    "rtf_warm": 2.1726773151154575,
+    "cold_first_decode_seconds": 11.24,
+    "peak_rss_mb": 2232.44,
+    "model_size_mb": 1533.77,
+    "status": "ok",
+    "rtf_decode_only": 2.0717287604072836,
+    "decode_only_seconds": 94.11657000000001,
+    "wer": 0.03333333333333333,
+    "sub": 4,
+    "del": 1,
+    "ins": 0,
+    "name_accuracy": 0.7692307692307693,
+    "per_term": {
+      "mesa": {
+        "ref": 3,
+        "correct": 3,
+        "accuracy": 1.0
+      },
+      "auris": {
+        "ref": 3,
+        "correct": 3,
+        "accuracy": 1.0
+      },
+      "khora": {
+        "ref": 2,
+        "correct": 0,
+        "accuracy": 0.0
+      },
+      "qorvex": {
+        "ref": 2,
+        "correct": 1,
+        "accuracy": 0.5
+      },
+      "helios": {
+        "ref": 2,
+        "correct": 2,
+        "accuracy": 1.0
+      },
+      "kokoro": {
+        "ref": 1,
+        "correct": 1,
+        "accuracy": 1.0
+      }
+    }
+  },
+  {
+    "config": "parakeet-tdt-0.6b-int8",
+    "engine": "parakeet",
+    "model": "parakeet-tdt-0.6b-v2-int8",
+    "prompt": false,
+    "audio_seconds": 45.429,
+    "warm_decode_seconds": 3.9681670665740967,
+    "rtf_warm": 0.08734876547082472,
+    "cold_first_decode_seconds": 4.004709720611572,
+    "peak_rss_mb": 1557.23,
+    "model_size_mb": 661.18,
+    "status": "ok",
+    "per_invocation_total_seconds": 28.798118114471436,
+    "rtf_per_invocation": 0.6339148307610067,
+    "wer": 0.05333333333333334,
+    "sub": 7,
+    "del": 1,
+    "ins": 0,
+    "name_accuracy": 0.5384615384615384,
+    "per_term": {
+      "mesa": {
+        "ref": 3,
+        "correct": 2,
+        "accuracy": 0.6666666666666666
+      },
+      "auris": {
+        "ref": 3,
+        "correct": 2,
+        "accuracy": 0.6666666666666666
+      },
+      "khora": {
+        "ref": 2,
+        "correct": 0,
+        "accuracy": 0.0
+      },
+      "qorvex": {
+        "ref": 2,
+        "correct": 0,
+        "accuracy": 0.0
+      },
+      "helios": {
+        "ref": 2,
+        "correct": 2,
+        "accuracy": 1.0
+      },
+      "kokoro": {
+        "ref": 1,
+        "correct": 1,
+        "accuracy": 1.0
+      }
+    }
+  }
+]

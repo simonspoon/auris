@@ -1,0 +1,15 @@
+{
+  "config": "parakeet-tdt-0.6b-int8",
+  "engine": "parakeet",
+  "model": "parakeet-tdt-0.6b-v2-int8",
+  "prompt": false,
+  "audio_seconds": 45.429,
+  "warm_decode_seconds": 3.9681670665740967,
+  "rtf_warm": 0.08734876547082472,
+  "cold_first_decode_seconds": 4.004709720611572,
+  "peak_rss_mb": 1557.23,
+  "model_size_mb": 661.18,
+  "status": "ok",
+  "per_invocation_total_seconds": 28.798118114471436,
+  "rtf_per_invocation": 0.6339148307610067
+}

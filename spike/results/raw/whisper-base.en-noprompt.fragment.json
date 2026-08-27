@@ -1,0 +1,15 @@
+{
+  "config": "whisper-base.en-noprompt",
+  "engine": "whisper",
+  "model": "ggml-base.en.bin",
+  "prompt": false,
+  "audio_seconds": 45.429002,
+  "warm_decode_seconds": 10.881590843200684,
+  "rtf_warm": 0.23952960364836287,
+  "cold_first_decode_seconds": 1.13,
+  "peak_rss_mb": 328.59,
+  "model_size_mb": 147.96,
+  "status": "ok",
+  "rtf_decode_only": 0.1883495041339451,
+  "decode_only_seconds": 8.55653
+}
