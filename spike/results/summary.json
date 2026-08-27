@@ -17,36 +17,62 @@
     "sub": 16,
     "del": 1,
     "ins": 1,
-    "name_accuracy": 0.3076923076923077,
+    "name_accuracy": 0.3529411764705882,
+    "name_precision": 0.75,
+    "name_recall": 0.23076923076923078,
     "per_term": {
       "mesa": {
         "ref": 3,
+        "hyp": 2,
         "correct": 2,
-        "accuracy": 0.6666666666666666
+        "precision": 1.0,
+        "recall": 0.6666666666666666,
+        "f1": 0.8,
+        "accuracy": 0.8
       },
       "auris": {
         "ref": 3,
+        "hyp": 0,
         "correct": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
         "accuracy": 0.0
       },
       "khora": {
         "ref": 2,
+        "hyp": 0,
         "correct": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
         "accuracy": 0.0
       },
       "qorvex": {
         "ref": 2,
+        "hyp": 0,
         "correct": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
         "accuracy": 0.0
       },
       "helios": {
         "ref": 2,
-        "correct": 2,
-        "accuracy": 1.0
+        "hyp": 2,
+        "correct": 1,
+        "precision": 0.5,
+        "recall": 0.5,
+        "f1": 0.5,
+        "accuracy": 0.5
       },
       "kokoro": {
         "ref": 1,
+        "hyp": 0,
         "correct": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
         "accuracy": 0.0
       }
     }
@@ -69,36 +95,62 @@
     "sub": 10,
     "del": 4,
     "ins": 6,
-    "name_accuracy": 0.6153846153846154,
+    "name_accuracy": 0.6956521739130435,
+    "name_precision": 0.8,
+    "name_recall": 0.6153846153846154,
     "per_term": {
       "mesa": {
         "ref": 3,
+        "hyp": 3,
         "correct": 3,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
         "accuracy": 1.0
       },
       "auris": {
         "ref": 3,
+        "hyp": 4,
         "correct": 3,
-        "accuracy": 1.0
+        "precision": 0.75,
+        "recall": 1.0,
+        "f1": 0.8571428571428571,
+        "accuracy": 0.8571428571428571
       },
       "khora": {
         "ref": 2,
+        "hyp": 0,
         "correct": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
         "accuracy": 0.0
       },
       "qorvex": {
         "ref": 2,
+        "hyp": 0,
         "correct": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
         "accuracy": 0.0
       },
       "helios": {
         "ref": 2,
+        "hyp": 3,
         "correct": 2,
-        "accuracy": 1.0
+        "precision": 0.6666666666666666,
+        "recall": 1.0,
+        "f1": 0.8,
+        "accuracy": 0.8
       },
       "kokoro": {
         "ref": 1,
+        "hyp": 0,
         "correct": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
         "accuracy": 0.0
       }
     }
@@ -121,36 +173,62 @@
     "sub": 11,
     "del": 2,
     "ins": 1,
-    "name_accuracy": 0.3076923076923077,
+    "name_accuracy": 0.4444444444444444,
+    "name_precision": 0.8,
+    "name_recall": 0.3076923076923077,
     "per_term": {
       "mesa": {
         "ref": 3,
+        "hyp": 2,
         "correct": 2,
-        "accuracy": 0.6666666666666666
+        "precision": 1.0,
+        "recall": 0.6666666666666666,
+        "f1": 0.8,
+        "accuracy": 0.8
       },
       "auris": {
         "ref": 3,
+        "hyp": 0,
         "correct": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
         "accuracy": 0.0
       },
       "khora": {
         "ref": 2,
+        "hyp": 0,
         "correct": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
         "accuracy": 0.0
       },
       "qorvex": {
         "ref": 2,
+        "hyp": 0,
         "correct": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
         "accuracy": 0.0
       },
       "helios": {
         "ref": 2,
+        "hyp": 3,
         "correct": 2,
-        "accuracy": 1.0
+        "precision": 0.6666666666666666,
+        "recall": 1.0,
+        "f1": 0.8,
+        "accuracy": 0.8
       },
       "kokoro": {
         "ref": 1,
+        "hyp": 0,
         "correct": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
         "accuracy": 0.0
       }
     }
@@ -173,36 +251,62 @@
     "sub": 5,
     "del": 2,
     "ins": 0,
-    "name_accuracy": 0.7692307692307693,
+    "name_accuracy": 0.7500000000000001,
+    "name_precision": 0.8181818181818182,
+    "name_recall": 0.6923076923076923,
     "per_term": {
       "mesa": {
         "ref": 3,
+        "hyp": 3,
         "correct": 3,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
         "accuracy": 1.0
       },
       "auris": {
         "ref": 3,
+        "hyp": 3,
         "correct": 3,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
         "accuracy": 1.0
       },
       "khora": {
         "ref": 2,
+        "hyp": 0,
         "correct": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
         "accuracy": 0.0
       },
       "qorvex": {
         "ref": 2,
+        "hyp": 3,
         "correct": 2,
-        "accuracy": 1.0
+        "precision": 0.6666666666666666,
+        "recall": 1.0,
+        "f1": 0.8,
+        "accuracy": 0.8
       },
       "helios": {
         "ref": 2,
-        "correct": 2,
-        "accuracy": 1.0
+        "hyp": 2,
+        "correct": 1,
+        "precision": 0.5,
+        "recall": 0.5,
+        "f1": 0.5,
+        "accuracy": 0.5
       },
       "kokoro": {
         "ref": 1,
+        "hyp": 0,
         "correct": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
         "accuracy": 0.0
       }
     }
@@ -225,36 +329,62 @@
     "sub": 8,
     "del": 1,
     "ins": 2,
-    "name_accuracy": 0.46153846153846156,
+    "name_accuracy": 0.6,
+    "name_precision": 0.8571428571428571,
+    "name_recall": 0.46153846153846156,
     "per_term": {
       "mesa": {
         "ref": 3,
+        "hyp": 3,
         "correct": 3,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
         "accuracy": 1.0
       },
       "auris": {
         "ref": 3,
+        "hyp": 0,
         "correct": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
         "accuracy": 0.0
       },
       "khora": {
         "ref": 2,
+        "hyp": 0,
         "correct": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
         "accuracy": 0.0
       },
       "qorvex": {
         "ref": 2,
+        "hyp": 0,
         "correct": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
         "accuracy": 0.0
       },
       "helios": {
         "ref": 2,
+        "hyp": 3,
         "correct": 2,
-        "accuracy": 1.0
+        "precision": 0.6666666666666666,
+        "recall": 1.0,
+        "f1": 0.8,
+        "accuracy": 0.8
       },
       "kokoro": {
         "ref": 1,
+        "hyp": 1,
         "correct": 1,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
         "accuracy": 1.0
       }
     }
@@ -277,36 +407,62 @@
     "sub": 4,
     "del": 1,
     "ins": 0,
-    "name_accuracy": 0.7692307692307693,
+    "name_accuracy": 0.8333333333333333,
+    "name_precision": 0.9090909090909091,
+    "name_recall": 0.7692307692307693,
     "per_term": {
       "mesa": {
         "ref": 3,
+        "hyp": 3,
         "correct": 3,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
         "accuracy": 1.0
       },
       "auris": {
         "ref": 3,
+        "hyp": 3,
         "correct": 3,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
         "accuracy": 1.0
       },
       "khora": {
         "ref": 2,
+        "hyp": 1,
         "correct": 1,
-        "accuracy": 0.5
+        "precision": 1.0,
+        "recall": 0.5,
+        "f1": 0.6666666666666666,
+        "accuracy": 0.6666666666666666
       },
       "qorvex": {
         "ref": 2,
+        "hyp": 0,
         "correct": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
         "accuracy": 0.0
       },
       "helios": {
         "ref": 2,
+        "hyp": 3,
         "correct": 2,
-        "accuracy": 1.0
+        "precision": 0.6666666666666666,
+        "recall": 1.0,
+        "f1": 0.8,
+        "accuracy": 0.8
       },
       "kokoro": {
         "ref": 1,
+        "hyp": 1,
         "correct": 1,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
         "accuracy": 1.0
       }
     }
@@ -329,36 +485,62 @@
     "sub": 9,
     "del": 1,
     "ins": 0,
-    "name_accuracy": 0.38461538461538464,
+    "name_accuracy": 0.5263157894736842,
+    "name_precision": 0.8333333333333334,
+    "name_recall": 0.38461538461538464,
     "per_term": {
       "mesa": {
         "ref": 3,
+        "hyp": 2,
         "correct": 2,
-        "accuracy": 0.6666666666666666
+        "precision": 1.0,
+        "recall": 0.6666666666666666,
+        "f1": 0.8,
+        "accuracy": 0.8
       },
       "auris": {
         "ref": 3,
+        "hyp": 0,
         "correct": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
         "accuracy": 0.0
       },
       "khora": {
         "ref": 2,
+        "hyp": 0,
         "correct": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
         "accuracy": 0.0
       },
       "qorvex": {
         "ref": 2,
+        "hyp": 0,
         "correct": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
         "accuracy": 0.0
       },
       "helios": {
         "ref": 2,
+        "hyp": 3,
         "correct": 2,
-        "accuracy": 1.0
+        "precision": 0.6666666666666666,
+        "recall": 1.0,
+        "f1": 0.8,
+        "accuracy": 0.8
       },
       "kokoro": {
         "ref": 1,
+        "hyp": 1,
         "correct": 1,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
         "accuracy": 1.0
       }
     }
@@ -381,36 +563,62 @@
     "sub": 4,
     "del": 1,
     "ins": 0,
-    "name_accuracy": 0.7692307692307693,
+    "name_accuracy": 0.8333333333333333,
+    "name_precision": 0.9090909090909091,
+    "name_recall": 0.7692307692307693,
     "per_term": {
       "mesa": {
         "ref": 3,
+        "hyp": 3,
         "correct": 3,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
         "accuracy": 1.0
       },
       "auris": {
         "ref": 3,
+        "hyp": 3,
         "correct": 3,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
         "accuracy": 1.0
       },
       "khora": {
         "ref": 2,
+        "hyp": 0,
         "correct": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
         "accuracy": 0.0
       },
       "qorvex": {
         "ref": 2,
+        "hyp": 1,
         "correct": 1,
-        "accuracy": 0.5
+        "precision": 1.0,
+        "recall": 0.5,
+        "f1": 0.6666666666666666,
+        "accuracy": 0.6666666666666666
       },
       "helios": {
         "ref": 2,
+        "hyp": 3,
         "correct": 2,
-        "accuracy": 1.0
+        "precision": 0.6666666666666666,
+        "recall": 1.0,
+        "f1": 0.8,
+        "accuracy": 0.8
       },
       "kokoro": {
         "ref": 1,
+        "hyp": 1,
         "correct": 1,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
         "accuracy": 1.0
       }
     }
@@ -433,36 +641,62 @@
     "sub": 7,
     "del": 1,
     "ins": 0,
-    "name_accuracy": 0.5384615384615384,
+    "name_accuracy": 0.6666666666666667,
+    "name_precision": 0.875,
+    "name_recall": 0.5384615384615384,
     "per_term": {
       "mesa": {
         "ref": 3,
+        "hyp": 2,
         "correct": 2,
-        "accuracy": 0.6666666666666666
+        "precision": 1.0,
+        "recall": 0.6666666666666666,
+        "f1": 0.8,
+        "accuracy": 0.8
       },
       "auris": {
         "ref": 3,
+        "hyp": 2,
         "correct": 2,
-        "accuracy": 0.6666666666666666
+        "precision": 1.0,
+        "recall": 0.6666666666666666,
+        "f1": 0.8,
+        "accuracy": 0.8
       },
       "khora": {
         "ref": 2,
+        "hyp": 0,
         "correct": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
         "accuracy": 0.0
       },
       "qorvex": {
         "ref": 2,
+        "hyp": 0,
         "correct": 0,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
         "accuracy": 0.0
       },
       "helios": {
         "ref": 2,
+        "hyp": 3,
         "correct": 2,
-        "accuracy": 1.0
+        "precision": 0.6666666666666666,
+        "recall": 1.0,
+        "f1": 0.8,
+        "accuracy": 0.8
       },
       "kokoro": {
         "ref": 1,
+        "hyp": 1,
         "correct": 1,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
         "accuracy": 1.0
       }
     }

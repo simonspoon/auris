@@ -39,6 +39,8 @@ def main():
             entry["del"] = score["del"]
             entry["ins"] = score["ins"]
             entry["name_accuracy"] = score["name_accuracy"]
+            entry["name_precision"] = score["name_precision"]
+            entry["name_recall"] = score["name_recall"]
             entry["per_term"] = score["per_term"]
 
         summary.append(entry)

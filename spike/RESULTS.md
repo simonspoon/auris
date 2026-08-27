@@ -9,6 +9,20 @@ Engines under test:
 
 Fixture: 8 synthetic utterances, `spike/fixtures/utterances.tsv`, total audio 45.43 s.
 
+## ⚠️ Metric change, 2026-08-27 (task 949) — every number below is the corrected metric
+
+Name accuracy used to be recall-only and position-blind: `min(ref_count, hyp_count)`
+per term over the whole utterance. It never penalised a name the engine emitted
+that wasn't actually spoken, so a config that babbled a mesa name into every
+slot could score as well as one that got it right. It is now alignment-based:
+the hypothesis is Levenshtein-aligned to the reference, and a vocab term only
+counts as a hit when it lands on a matching slot; anything else (an inserted
+name, or a name substituted into a slot where a different word — or a
+different vocab term — was spoken) counts as a false positive. **`name_accuracy`
+in the JSON, and every "name accuracy" figure in this document, is now the F1
+of that precision/recall pair.** All configs have been rescored; nothing here
+is comparable to an older copy of this file that predates task 949.
+
 ## ⚠️ Fixture caveat — read before trusting absolute numbers
 
 The 8 reference utterances were generated with macOS `say` (text-to-speech), **not the owner's real dictated voice** — this spike ran headless with no microphone access. Synthetic TTS speech is cleaner, more evenly paced, and more consistently articulated than real human dictation. That means:
@@ -29,17 +43,17 @@ This regenerates `spike/results/summary.json` and this identical table structure
 
 RTF = real-time factor (decode time ÷ 45.43 s audio); lower is better; RTF < 1.0 = faster than realtime.
 
-| Config | RTF (warm, end-to-end) | RTF (decode-only) | Cold first decode (s) | Peak RSS (MB) | WER | Name accuracy |
-|---|---|---|---|---|---|---|
-| whisper tiny.en, no prompt | 0.153 | 0.105 | 0.76 | 215 | 12.0% | 30.8% |
-| whisper tiny.en, prompt | 0.163 | 0.112 | 0.72 | 224 | 13.3% | 61.5% |
-| whisper base.en, no prompt | 0.240 | 0.188 | 1.13 | 329 | 9.3% | 30.8% |
-| whisper base.en, prompt | 0.244 | 0.195 | 1.25 | 338 | 4.7% | 76.9% |
-| whisper small.en, no prompt | 0.640 | 0.570 | 3.15 | 825 | 7.3% | 46.2% |
-| whisper small.en, prompt | 0.657 | 0.587 | 3.40 | 834 | 3.3% | 76.9% |
-| whisper medium.en, no prompt | 1.955 | 1.862 | 10.19 | 2223 | 6.7% | 38.5% |
-| whisper medium.en, prompt | 2.173 | 2.072 | 11.24 | 2232 | 3.3% | 76.9% |
-| parakeet tdt-0.6b int8 | 0.087 (warm) / **0.634 (per-invocation)** | — | 4.00 | 1557 | 5.3% | 53.8% |
+| Config | RTF (warm, end-to-end) | RTF (decode-only) | Cold first decode (s) | Peak RSS (MB) | WER | Name F1 | Name precision | Name recall |
+|---|---|---|---|---|---|---|---|---|
+| whisper tiny.en, no prompt | 0.153 | 0.105 | 0.76 | 215 | 12.0% | 35.3% | 75.0% | 23.1% |
+| whisper tiny.en, prompt | 0.163 | 0.112 | 0.72 | 224 | 13.3% | 69.6% | 80.0% | 61.5% |
+| whisper base.en, no prompt | 0.240 | 0.188 | 1.13 | 329 | 9.3% | 44.4% | 80.0% | 30.8% |
+| whisper base.en, prompt | 0.244 | 0.195 | 1.25 | 338 | 4.7% | 75.0% | 81.8% | 69.2% |
+| whisper small.en, no prompt | 0.640 | 0.570 | 3.15 | 825 | 7.3% | 60.0% | 85.7% | 46.2% |
+| whisper small.en, prompt | 0.657 | 0.587 | 3.40 | 834 | 3.3% | 83.3% | 90.9% | 76.9% |
+| whisper medium.en, no prompt | 1.955 | 1.862 | 10.19 | 2223 | 6.7% | 52.6% | 83.3% | 38.5% |
+| whisper medium.en, prompt | 2.173 | 2.072 | 11.24 | 2232 | 3.3% | 83.3% | 90.9% | 76.9% |
+| parakeet tdt-0.6b int8 | 0.087 (warm) / **0.634 (per-invocation)** | — | 4.00 | 1557 | 5.3% | 66.7% | 87.5% | 53.8% |
 
 Parakeet has two RTF numbers because it has no separate "decode-only" phase reported by the harness the way whisper does:
 - **0.087** — decode RTF inside a warm, already-loaded process (recognizer built once, all 8 utterances decoded in-process). This is the number that matters for a persistent/daemonized service.
@@ -49,28 +63,28 @@ WER and name accuracy are computed against reference text (`spike/fixtures/utter
 
 ## 2. Per-term name accuracy
 
-Accuracy per config for each of the 6 product/task names (source: `per_term` in each `*.score.json`; ref counts: mesa=3, auris=3, khora=2, qorvex=2, helios=2, kokoro=1, total=13):
+F1 per config for each of the 6 product/task names (source: `per_term` in each `*.score.json`; ref counts: mesa=3, auris=3, khora=2, qorvex=2, helios=2, kokoro=1, total=13). Cell is `F1 (hits/ref, N emitted)` so both sides — what the engine missed and what it hallucinated — are visible in one number:
 
 | Config | mesa | auris | khora | qorvex | helios | kokoro |
 |---|---|---|---|---|---|---|
-| tiny, no prompt | 66.7% | 0% | 0% | 0% | 100% | 0% |
-| tiny, prompt | 100% | 100% | 0% | 0% | 100% | 0% |
-| base, no prompt | 66.7% | 0% | 0% | 0% | 100% | 0% |
-| base, prompt | 100% | 100% | 0% | 100% | 100% | 0% |
-| small, no prompt | 100% | 0% | 0% | 0% | 100% | 100% |
-| small, prompt | 100% | 100% | 50% | 0% | 100% | 100% |
-| medium, no prompt | 66.7% | 0% | 0% | 0% | 100% | 100% |
-| medium, prompt | 100% | 100% | 0% | 50% | 100% | 100% |
-| parakeet | 66.7% | 66.7% | 0% | 0% | 100% | 100% |
+| tiny, no prompt | 80% (2/3, 2) | 0% (0/3, 0) | 0% (0/2, 0) | 0% (0/2, 0) | 50% (1/2, 2) | 0% (0/1, 0) |
+| tiny, prompt | 100% (3/3, 3) | 86% (3/3, 4) | 0% (0/2, 0) | 0% (0/2, 0) | 80% (2/2, 3) | 0% (0/1, 0) |
+| base, no prompt | 80% (2/3, 2) | 0% (0/3, 0) | 0% (0/2, 0) | 0% (0/2, 0) | 80% (2/2, 3) | 0% (0/1, 0) |
+| base, prompt | 100% (3/3, 3) | 100% (3/3, 3) | 0% (0/2, 0) | 80% (2/2, 3) | 50% (1/2, 2) | 0% (0/1, 0) |
+| small, no prompt | 100% (3/3, 3) | 0% (0/3, 0) | 0% (0/2, 0) | 0% (0/2, 0) | 80% (2/2, 3) | 100% (1/1, 1) |
+| small, prompt | 100% (3/3, 3) | 100% (3/3, 3) | 67% (1/2, 1) | 0% (0/2, 0) | 80% (2/2, 3) | 100% (1/1, 1) |
+| medium, no prompt | 80% (2/3, 2) | 0% (0/3, 0) | 0% (0/2, 0) | 0% (0/2, 0) | 80% (2/2, 3) | 100% (1/1, 1) |
+| medium, prompt | 100% (3/3, 3) | 100% (3/3, 3) | 0% (0/2, 0) | 67% (1/2, 1) | 80% (2/2, 3) | 100% (1/1, 1) |
+| parakeet | 80% (2/3, 2) | 80% (2/3, 2) | 0% (0/2, 0) | 0% (0/2, 0) | 80% (2/2, 3) | 100% (1/1, 1) |
 
 Observations:
-- **helios** is recognized correctly in every single config — it's already a common word/name in every model's vocabulary.
-- **khora** is the hardest term by far — correct in exactly one config (small.en+prompt, 50%), wrong everywhere else including every whisper prompt config.
-- **qorvex** is nearly as hard — correct only in base.en+prompt (100%) and medium.en+prompt (50%); the prompt doesn't reliably fix it.
+- **helios is *not* the clean control case the old metric implied.** It scores 80% F1 in 7 of 9 configs, not 100% — every engine we checked, prompted or not, emits a **third** "helios" that has no match in the reference. This is a fixture artifact, not an engine defect: u06's reference deliberately contains the pun *"transcribed helios **as hell EOS** again"*, and every engine hears "hell EOS" as "helios" too (verified against `spike/results/raw/*.tsv`: base.en-noprompt, medium.en-noprompt/prompt, small.en-noprompt/prompt, tiny.en-prompt, and parakeet all render u06 as "...transcribed Helios as Helios again..."). The corrected metric is right to flag that second "Helios" as a false positive — no one said the word twice — but it means helios was never actually 100% clean; the old recall-only metric just couldn't see the extra one. The two configs at 50% get there differently, but both by missing the *real* helios in u06 while still catching the "hell EOS" pun as an extra "Helios": tiny.en-noprompt renders u06 as *"...always transcribed **Helius** as **Helios** again..."* (real helios misspelled "Helius", a miss; the pun word is the false positive), and base.en-prompt renders it *"...transcribed **heliosus** helios again..."* (real helios misspelled "heliosus", same pattern).
+- **khora** is the hardest term by far — correct in exactly one config (small.en+prompt, 67%), wrong everywhere else including every whisper prompt config.
+- **qorvex** is nearly as hard — correct only in base.en+prompt (80%) and medium.en+prompt (67%); the prompt doesn't reliably fix it.
 - **kokoro** flips from always-wrong (tiny/base) to always-right (small/medium/parakeet) — it's a real word/brand already in the larger models' vocabulary, so it's not really testing the prompt mechanism, it's testing model size.
-- **auris** and **mesa** are the terms the prompt actually fixes cleanly: auris goes from 0% to 100% in every whisper config once prompted; mesa goes from ~67% to 100%.
+- **auris** and **mesa** are the terms the prompt actually fixes cleanly: auris goes from 0% to 100% in every whisper config once prompted; mesa goes from ~80% to 100%.
 
-**Sample sizes are small — read the per-term rows with their `ref` counts.** There are 13 name occurrences total across the 8 utterances: mesa 3, auris 3, khora 2, qorvex 2, helios 2, **kokoro 1**. A per-term percentage is therefore a count, not a rate: "kokoro 100%" means one occurrence was right, and "khora 50%" means one of two. The kokoro finding in particular (wrong on tiny/base, right on small/medium/parakeet) rests on a single occurrence per config and should be treated as a hint to test further, not an established result. The aggregate name-accuracy column is over all 13 and is the more robust number. If this fixture set is reused, repeat kokoro and khora two or three more times.
+**Sample sizes are small — read the per-term rows with their `ref` counts.** There are 13 name occurrences total across the 8 utterances: mesa 3, auris 3, khora 2, qorvex 2, helios 2, **kokoro 1**. A per-term F1 is therefore built from a small count, not a large-sample rate: "kokoro 100%" means one occurrence was right, and "khora 67%" means one of two, matched, with no extra emissions. The kokoro finding in particular (wrong on tiny/base, right on small/medium/parakeet) rests on a single occurrence per config and should be treated as a hint to test further, not an established result. The aggregate name-accuracy column is over all 13 and is the more robust number. If this fixture set is reused, repeat kokoro and khora two or three more times.
 
 ## 3. What the engines actually heard
 
@@ -95,8 +109,10 @@ Quotes are raw transcript lines from `spike/results/raw/<config>.tsv`.
 - small.en (prompt): *"wire-up-**korvex**"*
 - parakeet: *"wire up **Corvex** to the iOS simulator"*, later *"**Corvex** tap failed twice"*
 
-**helios** — the control case, never mangled by anything:
-- Every config, every occurrence: *"Helios"*, verbatim, correct case even.
+**helios** — the closest thing to a control case, but not clean (see §2): the word itself is never misspelled, but u06's reference contains a deliberate pun, *"transcribed helios **as hell EOS** again"*, and almost every engine hears "hell EOS" as a second "Helios":
+- parakeet, base.en, medium.en, small.en (all no-prompt and prompt variants except two): *"...transcribed Helios as Helios again..."* — verbatim "Helios" twice, but only one was actually spoken.
+- tiny.en-noprompt: *"...always transcribed **Helius** as **Helios** again..."* — misspells the real one and still catches the pun.
+- base.en-prompt: *"...transcribed **heliosus** helios again..."* — same pattern.
 
 **kokoro** — flips to correct once the model is big enough to know the word as itself:
 - tiny.en: *"**Kakaro's** latency numbers"* / *"**Kakora's**"*
@@ -105,15 +121,39 @@ Quotes are raw transcript lines from `spike/results/raw/<config>.tsv`.
 
 This is the concrete case for auris existing: whisper and parakeet, run stock, turn "khora" into "Quora" or "Korra," turn "qorvex" into "corvex," and turn "auris" into a gaming-hardware brand name — silently, with no indication anything went wrong. A dictation pipeline built on these engines needs a vocabulary-biasing layer for this project's own terms or it will misfile tasks under the wrong project every time.
 
+### Ordering changes from the metric fix
+
+The corrected metric doesn't just relabel numbers — it changes which configs
+rank where:
+- **The old four-way tie at 76.9% breaks.** base.en+prompt, small.en+prompt,
+  medium.en+prompt, and tuned parakeet were previously tied for the best name
+  accuracy in the benchmark. Under F1: small.en+prompt = medium.en+prompt =
+  tuned parakeet at **83.3%**; base.en+prompt drops to **75.0%**, strictly
+  behind all three (see §4 and §6 for what this means for the task 924
+  recommendation).
+- **tiny.en-noprompt's recall (23.1%) is lower than its old name-accuracy
+  number (30.8%).** The old whole-utterance count credited it with a name it
+  hadn't actually produced in the right place; positional alignment catches
+  that. This is direct evidence that position-blindness, not just
+  insertion-blindness, mattered to the old metric's error.
+- **No-prompt configs' F1 rises relative to their old number** (e.g.
+  base.en-noprompt 30.8% → 44.4%) purely because they are precise-but-silent —
+  they rarely say a mesa name at all, so they rarely get one wrong either, and
+  the precision term rewards that. Recall for base.en-noprompt is unchanged at
+  30.8%. Don't read the F1 rise as the engine getting more accurate at names;
+  it didn't.
+
 ## 4. Findings
 
-**medium.en is unusable for live dictation on this host.** RTF is 1.955 (no prompt) / 2.173 (prompt) — roughly 2x realtime, i.e. it takes twice as long to decode as the audio takes to speak. It also doesn't win on accuracy: medium.en+prompt gets 76.9% name accuracy and 3.3% WER, identical name accuracy to base.en+prompt (76.9%) and small.en+prompt (76.9%), and the same WER as small.en+prompt (3.3% vs 3.3%). Its 8x higher RTF and 6.6x higher peak RSS (2232 MB vs 338 MB for base.en+prompt) buy nothing here.
+**medium.en is unusable for live dictation on this host.** RTF is 1.955 (no prompt) / 2.173 (prompt) — roughly 2x realtime, i.e. it takes twice as long to decode as the audio takes to speak. It also doesn't win on accuracy: medium.en+prompt gets 83.3% name F1 and 3.3% WER, matching small.en+prompt on both (83.3% F1, 3.3% WER) and actually *ahead* of base.en+prompt's 75.0% F1. Its 8x higher RTF and 6.6x higher peak RSS (2232 MB vs 338 MB for base.en+prompt) buy nothing over small.en+prompt here.
 
-**The initial prompt is the single highest-leverage lever available, at essentially zero latency cost.** Per-model name accuracy, no-prompt → prompt:
-- tiny.en: 30.8% → 61.5% (2.0x)
-- base.en: 30.8% → 76.9% (2.5x)
-- small.en: 46.2% → 76.9% (1.67x)
-- medium.en: 38.5% → 76.9% (2.0x)
+**The initial prompt is the single highest-leverage lever available, at essentially zero latency cost.** Per-model name F1, no-prompt → prompt:
+- tiny.en: 35.3% → 69.6% (2.0x)
+- base.en: 44.4% → 75.0% (1.7x)
+- small.en: 60.0% → 83.3% (1.4x)
+- medium.en: 52.6% → 83.3% (1.6x)
+
+The no-prompt side of this comparison is higher than it used to look (e.g. base.en-noprompt was 30.8% under the old recall-only metric, now 44.4%) — that is not the no-prompt engines getting more accurate, it's the corrected metric giving them credit for staying precise. No-prompt configs rarely say a mesa name at all, so their recall is unchanged (still 30.8% for base.en) but they get almost no false positives either, which the F1 rewards. The prompt is still the thing that actually recovers the missing names — recall is what moves.
 
 RTF cost of the prompt is negligible: base.en goes from 0.240 → 0.244 RTF (+1.7%), small.en 0.640 → 0.657 (+2.7%), medium.en 1.955 → 2.173 (+11%, still within noise given medium's already-unusable RTF). WER also improves with the prompt in every model (e.g. base.en 9.3% → 4.7%; small.en 7.3% → 3.3%).
 
@@ -121,16 +161,14 @@ RTF cost of the prompt is negligible: base.en goes from 0.240 → 0.244 RTF (+1.
 
 **parakeet is the fastest engine by a wide margin — but only in a warm/persistent process.** In-process RTF is 0.087, ~1.8x faster than whisper tiny.en (0.153) and ~2.8x faster than base.en (0.244). But spawned fresh per utterance, effective RTF is 0.634 because each invocation pays ~4s to load the 652 MB int8 encoder. A persistent parakeet process (loaded once, decoding many utterances) is required to realize the fast number; a cold-process-per-utterance architecture would put parakeet roughly on par with whisper small.en for latency.
 
-**The real tension for task 924: parakeet is fast but can't be steered; whisper+prompt is steerable but costs more RTF/RAM.** This setup's sherpa-onnx parakeet integration has no prompt or vocabulary-biasing mechanism, so its name accuracy (53.8%) is stuck wherever the model's native vocabulary lands it — better than unprompted whisper of any size, but well below any prompted whisper config (all 76.9%). Whisper's `--prompt` flag is cheap and effective, but even base.en+prompt at 0.244 RTF is ~2.8x slower than parakeet's warm in-process RTF. There is no config in this benchmark that is both the fastest and the most name-accurate — pick one axis to prioritize.
+**The real tension for task 924: parakeet is fast but can't be steered; whisper+prompt is steerable but costs more RTF/RAM.** This setup's sherpa-onnx parakeet integration has no prompt or vocabulary-biasing mechanism, so its name F1 (66.7%) is stuck wherever the model's native vocabulary lands it — better than unprompted whisper of any size, but behind small.en+prompt and medium.en+prompt (83.3% each) and roughly level with base.en+prompt (75.0%). Whisper's `--prompt` flag is cheap and effective, but even base.en+prompt at 0.244 RTF is ~2.8x slower than parakeet's warm in-process RTF. There is no config in this benchmark that is both the fastest and the most name-accurate — pick one axis to prioritize. (Section 6 revisits this once parakeet's own hotword biasing is on the table.)
 
-**Recommended default for task 924: whisper base.en with the initial prompt.**
+**Recommended default for task 924: whisper base.en with the initial prompt.** This recommendation was written under the old recall-only metric, where base.en+prompt showed 76.9% name accuracy "tied for the best in this benchmark, matching small.en+prompt and medium.en+prompt." **That basis no longer holds.** Under the corrected metric (§0, task 949), base.en+prompt scores 75.0% name F1 while small.en+prompt and medium.en+prompt both score 83.3% — base.en+prompt is not tied for best, it is strictly behind both. The RTF/RSS case for base.en (below) is unchanged and still real, but the accuracy justification for picking it over small.en+prompt is gone. **This finding should not be treated as settled — task 924 should re-read §6, where tuned parakeet now matches the best name F1 in the benchmark (83.3%) at a lower WER and roughly 3x the speed of base.en+prompt.** The rest of this paragraph is preserved as originally written, for the RTF/RSS case only:
 - RTF 0.244 — comfortably realtime (4x headroom) on this 2019-era CPU-only host, unlike medium.en.
-- Name accuracy 76.9% — tied for the best in this benchmark, matching small.en+prompt and medium.en+prompt.
-- WER 4.7% — worse than small.en+prompt's 3.3%, but the difference is on non-name words; on the terms that actually matter for filing tasks under the right project, base.en+prompt performs identically to small.en+prompt.
+- WER 4.7% — worse than small.en+prompt's 3.3%.
 - Peak RSS 338 MB and cold-start 1.25s — both a fraction of small.en+prompt (834 MB / 3.4s) or medium.en+prompt (2232 MB / 11.24s), which matters for running alongside other apps on a 32 GB box with no GPU offload.
-- Rejects parakeet as the default specifically because this domain's vocabulary (task/product names) is exactly what prompt-based biasing exists to fix, and parakeet's setup here has no equivalent mechanism — its 53.8% name accuracy is meaningfully behind every prompted whisper config.
 
-If peak general-purpose WER matters more than resource footprint (e.g. running on a beefier machine, or batch/offline transcription rather than live dictation), small.en+prompt is the next reasonable step up: same 76.9% name accuracy, better 3.3% WER, at 2.7x the RTF and 2.5x the RAM of base.en+prompt.
+If peak name accuracy matters more than resource footprint, small.en+prompt is the stronger pick now: 83.3% name F1 vs. base.en+prompt's 75.0%, better WER (3.3% vs 4.7%), at 2.7x the RTF and 2.5x the RAM of base.en+prompt.
 
 If/when a warm, persistent parakeet process becomes part of the architecture (avoiding the ~4s per-call load penalty) and a vocabulary-biasing mechanism is added on top (sherpa-onnx supports contextual biasing word lists in some configurations — not exercised in this spike), parakeet's raw 0.087 RTF makes it worth revisiting for a throughput-sensitive path. That's follow-up work, not something this spike settles.
 
@@ -187,16 +225,25 @@ awk '{printf "%s %d\n", $1, -NR+1}' tokens.txt > bpe_synth.vocab
 
 ### Uniform hotword score sweep (all 6 names at the same boost)
 
-| Config | RTF (warm, in-process) | WER | Name accuracy |
+| Config | RTF (warm, in-process) | WER | Name F1 |
 |---|---|---|---|
-| greedy, no hotwords (section 1 baseline) | 0.087 | 5.3% | 53.8% |
-| modified_beam_search, no hotwords | 0.076 | 5.3% | 53.8% |
-| + hotwords, score 1 / 2 / 3 / 3.5 | 0.074-0.077 | **4.0%** | 69.2% |
-| + hotwords, score 4 | 0.077 | 6.0% | 76.9% |
-| + hotwords, score 4.5 | 0.078 | 9.3% | 76.9% |
+| greedy, no hotwords (section 1 baseline) | 0.087 | 5.3% | 66.7% |
+| modified_beam_search, no hotwords | 0.076 | 5.3% | 66.7% |
+| + hotwords, score 1 / 2 / 3 / 3.5 | 0.074-0.077 | **4.0%** | 78.3% |
+| + hotwords, score 4 | 0.077 | 6.0% | 80.0% |
+| + hotwords, score 4.5 | 0.078 | 9.3% | 80.0% |
 | + hotwords, score 5 | 0.078 | 9.3% | 84.6% |
-| + hotwords, score 6 | 0.079 | 22.0% | 84.6% |
-| + hotwords, score 7 | 0.079 | 69.3% | 69.2% |
+| + hotwords, score 6 | 0.079 | 22.0% | 71.0% |
+| + hotwords, score 7 | 0.079 | 69.3% | 42.9% |
+
+The corrected metric separates configs the old one couldn't. Score 5.0 and
+6.0 used to tie at 84.6% "name accuracy"; under F1, 5.0 holds 84.6% while 6.0
+collapses to **71.0%** (precision 61.1% — 7 name false positives, up from 2 at
+score 5.0). Score 7.0 falls from 69.2% to **42.9%** (precision 31.0%, 20 name
+false positives): this is the babble case — the beam starts inserting and
+substituting mesa vocabulary everywhere as the boost overwhelms the acoustic
+model — being punished, which is exactly the acceptance criterion task 949
+set out to fix.
 
 ### Best config: per-word boosts
 
@@ -212,28 +259,54 @@ helios :3.0
 kokoro :3.0
 ```
 
-| Config | RTF (warm) | WER | Name accuracy |
+| Config | RTF (warm) | WER | Name F1 |
 |---|---|---|---|
-| **parakeet + per-word hotwords** | **0.082** | **4.0%** | **76.9%** |
-| whisper base.en + prompt (section 1 recommendation) | 0.244 | 4.7% | 76.9% |
-| whisper small.en + prompt | 0.657 | 3.3% | 76.9% |
+| **parakeet + per-word hotwords** | **0.082** | **4.0%** | **83.3%** |
+| whisper small.en + prompt | 0.657 | 3.3% | 83.3% |
+| whisper base.en + prompt (section 1 recommendation) | 0.244 | 4.7% | 75.0% |
 
-Parakeet with per-word biasing equals the best name accuracy in the whole
-benchmark, at a lower WER than base.en+prompt, at roughly 3x its speed warm.
-Modified beam search costs nothing measurable here (0.076 vs 0.087 RTF greedy).
+Parakeet with per-word biasing now matches the best name F1 in the whole
+benchmark — small.en+prompt, not base.en+prompt (base.en+prompt no longer ties
+for best; see §4) — at a lower WER than either, at roughly 3x base.en+prompt's
+speed warm. Modified beam search costs nothing measurable here (0.076 vs
+0.087 RTF greedy).
 
-Unlike whisper's prompt, the biasing showed **no cross-term contamination** at
-usable strengths: no run at score ≤ 4 inserted a mesa name into a slot where
-none was spoken (`ins` = 0 in every score file), which is the failure mode
-section 4 records for tiny.en+prompt and base.en+prompt.
+**Correction:** this section previously claimed the biasing showed "no
+cross-term contamination" at usable strengths, citing `ins = 0` in every
+score file. That claim was wrong — it relied on the old metric's blind spot.
+`ins = 0` only means no name was *inserted as an extra word*; it says nothing
+about a name *substituted* into a slot where a different word (or a different
+vocab term) was spoken, which the corrected alignment-based metric does
+catch. Every hotwords config in the sweep above has at least 1 name false
+positive, and the score 4.0/4.5/5.0 configs each have 2. One of those two is
+the helios/"hell EOS" fixture pun that affects every engine in this benchmark
+(§2) — not specific to biasing. The other is real: at score ≥ 4.0, u03's
+hypothesis reads *"Create a task in mesa **khora** qorvex to the iOS
+simulator..."* where the reference says *"create a task in mesa **called
+wire up** qorvex..."* (verified in `spike/results/hotwords/hot_bpe_4.0.tsv`
+against `spike/fixtures/utterances.tsv`) — the khora hotword gets pulled into
+a slot where "called wire up" was actually said, while the two *real* khora
+occurrences (u02, u07) are still both missed as "qora." Biasing at usable
+strengths is therefore roughly *comparable* to whisper's prompt on precision,
+not cleaner than it: hot_bpe 1.0-3.5 reaches 90.0% and 4.0-5.0 sits at
+83.3-84.6%, against 80.0% (tiny), 81.8% (base) and 90.9% (small, medium) for
+whisper+prompt — overlapping ranges, with the best whisper+prompt configs
+slightly ahead of the best biasing ones. What both have in common is that
+they stay far clear of the precision collapse at scores 6.0/7.0 (61.1% /
+31.0%). "No contamination" was an artifact of a metric that could not see a
+substitution, not a property of the biasing mechanism.
 
 ### What this does not fix
 
-`khora` is still never produced — every biased run hears *"qora"*. Raising its
-boost to 8 or 10 with the others left at 3 changes nothing. Whatever the beam
-is doing, the correct token sequence is not reachable from this audio, so the
+The two real occurrences of `khora` (u02, u07) are still never produced —
+both are still heard as *"qora"* at every boost tested. Raising its boost to
+8 or 10 with the others left at 3 changes nothing about that; the correct
+token sequence for those two spots is not reachable from this audio, so the
 post-ASR correction pass over mesa vocabulary is still required regardless of
 engine. `qora` → `khora` is a trivial edit distance, so that layer is cheap.
+(The literal string `khora` does appear, spuriously, at score ≥ 4.0 in u03 —
+see the correction above — but that is the beam hallucinating the word into
+an unrelated slot, not the model correctly hearing either real occurrence.)
 
 ### Consequences
 
@@ -242,6 +315,6 @@ engine. `qora` → `khora` is a trivial edit distance, so that layer is cheap.
   model load (persistent process required) and 1557 MB peak RSS vs 338 MB.
 - Caveat from section 1 still applies in full: these are `say` TTS fixtures, so
   the absolute numbers are a floor and only the ordering is trustworthy.
-- The name-accuracy metric is recall-only and rewarded the score-10 babble run
-  with the best number in the benchmark; see task 949 before this table is used
-  to decide anything.
+- The name-accuracy metric used to be recall-only and rewarded babble; that was
+  fixed in task 949 (§0). All F1/precision/recall numbers in this document,
+  including this addendum's tables, are the corrected metric.

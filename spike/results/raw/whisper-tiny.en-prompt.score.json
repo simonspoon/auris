@@ -4,38 +4,69 @@
   "del": 4,
   "ins": 6,
   "ref_words": 150,
-  "name_accuracy": 0.6153846153846154,
+  "name_accuracy": 0.6956521739130435,
+  "name_f1": 0.6956521739130435,
+  "name_precision": 0.8,
+  "name_recall": 0.6153846153846154,
   "name_total": 13,
   "name_correct": 8,
+  "name_hyp_total": 10,
+  "name_hits": 8,
+  "name_missed": 5,
+  "name_false_pos": 2,
   "per_term": {
     "mesa": {
       "ref": 3,
+      "hyp": 3,
       "correct": 3,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
       "accuracy": 1.0
     },
     "auris": {
       "ref": 3,
+      "hyp": 4,
       "correct": 3,
-      "accuracy": 1.0
+      "precision": 0.75,
+      "recall": 1.0,
+      "f1": 0.8571428571428571,
+      "accuracy": 0.8571428571428571
     },
     "khora": {
       "ref": 2,
+      "hyp": 0,
       "correct": 0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
       "accuracy": 0.0
     },
     "qorvex": {
       "ref": 2,
+      "hyp": 0,
       "correct": 0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
       "accuracy": 0.0
     },
     "helios": {
       "ref": 2,
+      "hyp": 3,
       "correct": 2,
-      "accuracy": 1.0
+      "precision": 0.6666666666666666,
+      "recall": 1.0,
+      "f1": 0.8,
+      "accuracy": 0.8
     },
     "kokoro": {
       "ref": 1,
+      "hyp": 0,
       "correct": 0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
       "accuracy": 0.0
     }
   },
@@ -48,7 +79,9 @@
       "ins": 0,
       "ref_words": 16,
       "name_total": 1,
-      "name_correct": 1
+      "name_correct": 1,
+      "name_hyp_total": 1,
+      "name_false_pos": 0
     },
     {
       "id": "u02",
@@ -58,7 +91,9 @@
       "ins": 0,
       "ref_words": 14,
       "name_total": 2,
-      "name_correct": 1
+      "name_correct": 1,
+      "name_hyp_total": 1,
+      "name_false_pos": 0
     },
     {
       "id": "u03",
@@ -68,7 +103,9 @@
       "ins": 0,
       "ref_words": 18,
       "name_total": 2,
-      "name_correct": 1
+      "name_correct": 1,
+      "name_hyp_total": 2,
+      "name_false_pos": 1
     },
     {
       "id": "u04",
@@ -78,7 +115,9 @@
       "ins": 0,
       "ref_words": 12,
       "name_total": 1,
-      "name_correct": 1
+      "name_correct": 1,
+      "name_hyp_total": 1,
+      "name_false_pos": 0
     },
     {
       "id": "u05",
@@ -88,7 +127,9 @@
       "ins": 0,
       "ref_words": 15,
       "name_total": 1,
-      "name_correct": 0
+      "name_correct": 0,
+      "name_hyp_total": 0,
+      "name_false_pos": 0
     },
     {
       "id": "u06",
@@ -98,7 +139,9 @@
       "ins": 0,
       "ref_words": 41,
       "name_total": 3,
-      "name_correct": 3
+      "name_correct": 3,
+      "name_hyp_total": 4,
+      "name_false_pos": 1
     },
     {
       "id": "u07",
@@ -108,7 +151,9 @@
       "ins": 6,
       "ref_words": 14,
       "name_total": 1,
-      "name_correct": 0
+      "name_correct": 0,
+      "name_hyp_total": 0,
+      "name_false_pos": 0
     },
     {
       "id": "u08",
@@ -118,7 +163,9 @@
       "ins": 0,
       "ref_words": 20,
       "name_total": 2,
-      "name_correct": 1
+      "name_correct": 1,
+      "name_hyp_total": 1,
+      "name_false_pos": 0
     }
   ]
 }
