@@ -108,14 +108,21 @@ while WER also improves, 4.0% → 2.0%.
   benchmarked; no vocabulary lever); MLX whisper (Apple Silicon and a Python
   runtime, both disqualifying for a binary mesa shells out to).
 
-## Open risk before this is irreversible
+## Rust binding: verified, no fallback
 
-The spike ran sherpa-onnx through Python. The Rust crate is the same upstream
-version, but **the first implementation task must confirm the Rust API exposes
-hotwords, `bpe_vocab` and `modified_beam_search`**, and reproduce the 83.3% /
-4.0% numbers from Rust before the rest of the backlog is rewritten around it. If
-it does not, the fallback is whisper small.en+prompt (equal names, 8x the RTF,
-proven `whisper-rs` bindings) rather than base.en.
+The spike ran sherpa-onnx through Python, so the plan was to confirm the Rust
+side before committing. Confirmed 2026-08-27 by reading the published crate
+source (`sherpa-onnx` 1.13.6 from crates.io): `OfflineModelConfig` carries
+`model_type`, `modeling_unit` and `bpe_vocab`; `OfflineRecognizerConfig` carries
+`decoding_method`, `hotwords_file` and `hotwords_score`; and the crate ships
+`rust-api-examples/examples/nemo_parakeet.rs`. Every knob the spike used exists
+in Rust. No fork, no patched crate, no direct `sherpa-onnx-sys` work needed.
+
+**There is no whisper fallback.** If a problem shows up in the Rust path, the
+answer is to fix the binding — patch or vendor the crate, or bind the C API
+through `sherpa-onnx-sys` — not to switch engines. The first implementation task
+(933) still reproduces the spike's 83.3% name F1 / 4.0% WER from Rust as an
+end-to-end check, but that is verification, not a decision point.
 
 Second caveat, inherited from the spike: the fixtures are macOS `say` TTS, not a
 real dictated voice. Absolute numbers are a floor; the ordering is what this
