@@ -161,3 +161,87 @@ cd spike/harness
 - `--threads` / `PARAKEET_THREADS` env var, default 8.
 
 Full setup notes: `spike/harness/NOTES-whisper.md`, `spike/harness/NOTES-parakeet.md`. Raw data: `spike/results/summary.json`, `spike/results/raw/*.tsv`, `spike/results/raw/*.score.json`.
+
+## 6. Addendum, 2026-08-27: parakeet contextual biasing (task 948)
+
+Section 4 above claims "this setup's sherpa-onnx parakeet integration has no
+prompt or vocabulary-biasing mechanism". That is wrong. `sherpa_onnx 1.13.6`'s
+`OfflineRecognizer.from_transducer` accepts `hotwords_file`, `hotwords_score`,
+`modeling_unit` and `bpe_vocab`, and they work with `model_type="nemo_transducer"`
+— they are simply ignored unless `decoding_method="modified_beam_search"`, and
+the original benchmark ran greedy search. Same host, same 8 fixtures, same
+scorer; harness at `spike/harness/parakeet_hotwords_bench.py`, raw output in
+`spike/results/hotwords/`.
+
+**`bpe_vocab` must be a sentencepiece-style `token score` file, not `tokens.txt`.**
+`tokens.txt` is `token id`, and passing it produces a silently miscalibrated
+tokenizer: hotwords then do nothing at scores 2-4 and destroy the transcript at
+10 (name accuracy 84.6% on output reading *"qorvex qo' qo' auris auris koko"*,
+WER 91.3%). For a BPE model the piece score is the negative merge rank, so the
+correct file is derivable from `tokens.txt` directly and is committed as
+`spike/models/parakeet/bpe_synth.vocab`:
+
+```
+awk '{printf "%s %d\n", $1, -NR+1}' tokens.txt > bpe_synth.vocab
+```
+
+### Uniform hotword score sweep (all 6 names at the same boost)
+
+| Config | RTF (warm, in-process) | WER | Name accuracy |
+|---|---|---|---|
+| greedy, no hotwords (section 1 baseline) | 0.087 | 5.3% | 53.8% |
+| modified_beam_search, no hotwords | 0.076 | 5.3% | 53.8% |
+| + hotwords, score 1 / 2 / 3 / 3.5 | 0.074-0.077 | **4.0%** | 69.2% |
+| + hotwords, score 4 | 0.077 | 6.0% | 76.9% |
+| + hotwords, score 4.5 | 0.078 | 9.3% | 76.9% |
+| + hotwords, score 5 | 0.078 | 9.3% | 84.6% |
+| + hotwords, score 6 | 0.079 | 22.0% | 84.6% |
+| + hotwords, score 7 | 0.079 | 69.3% | 69.2% |
+
+### Best config: per-word boosts
+
+sherpa accepts a per-line boost (`khora :6.5`), so the hard terms can be pushed
+without paying the WER cost on the easy ones. `spike/fixtures/hotwords.txt`:
+
+```
+mesa :3.0
+auris :3.0
+khora :6.5
+qorvex :5.0
+helios :3.0
+kokoro :3.0
+```
+
+| Config | RTF (warm) | WER | Name accuracy |
+|---|---|---|---|
+| **parakeet + per-word hotwords** | **0.082** | **4.0%** | **76.9%** |
+| whisper base.en + prompt (section 1 recommendation) | 0.244 | 4.7% | 76.9% |
+| whisper small.en + prompt | 0.657 | 3.3% | 76.9% |
+
+Parakeet with per-word biasing equals the best name accuracy in the whole
+benchmark, at a lower WER than base.en+prompt, at roughly 3x its speed warm.
+Modified beam search costs nothing measurable here (0.076 vs 0.087 RTF greedy).
+
+Unlike whisper's prompt, the biasing showed **no cross-term contamination** at
+usable strengths: no run at score ≤ 4 inserted a mesa name into a slot where
+none was spoken (`ins` = 0 in every score file), which is the failure mode
+section 4 records for tiny.en+prompt and base.en+prompt.
+
+### What this does not fix
+
+`khora` is still never produced — every biased run hears *"qora"*. Raising its
+boost to 8 or 10 with the others left at 3 changes nothing. Whatever the beam
+is doing, the correct token sequence is not reachable from this audio, so the
+post-ASR correction pass over mesa vocabulary is still required regardless of
+engine. `qora` → `khora` is a trivial edit distance, so that layer is cheap.
+
+### Consequences
+
+- Task 924's engine decision is genuinely open again; the "parakeet cannot be
+  steered" premise no longer holds. Parakeet's remaining real costs are the ~4s
+  model load (persistent process required) and 1557 MB peak RSS vs 338 MB.
+- Caveat from section 1 still applies in full: these are `say` TTS fixtures, so
+  the absolute numbers are a floor and only the ordering is trustworthy.
+- The name-accuracy metric is recall-only and rewarded the score-10 babble run
+  with the best number in the benchmark; see task 949 before this table is used
+  to decide anything.
