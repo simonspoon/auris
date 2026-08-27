@@ -82,7 +82,7 @@ each utterance's text is flushed to stdout as soon as that utterance ends.
 For a single short recording (the common case: one WAV, one utterance) this
 collapses to "auris reads it all, then writes the transcript" — there is
 nothing to flush early. The segmentation itself — where an utterance boundary
-falls — is not this task's decision; see task 926 and Notes below.
+falls — is decided in `docs/streaming.md`; see Notes below.
 
 ### stdout
 
@@ -212,30 +212,31 @@ never an argument — the same load-bearing property `speech.rs`'s own
 comment states for kokoro-rs), and drains stderr on its own thread for the
 child's whole life so a verbose failure cannot block the write auris is
 waiting on. auris's client half connects to the daemon (starting it if
-absent), forwards the audio, and streams back JSON as it decodes. mesa reads
-stdout to EOF the same way it already reads WAV bytes from kokoro-rs; a
-nonzero exit with nothing committed to stdout is the one signal mesa treats
-as failure, exactly as it does today when kokoro-rs produces no audio.
+absent), forwards the audio, and streams back JSON Lines as it decodes. mesa
+reads stdout incrementally — the same pattern `speech.rs::start` already
+runs over kokoro-rs's stdout, reading in a loop rather than draining to EOF
+(`docs/streaming.md`) — so parsing `\n`-delimited JSON lines is no new
+machinery. A nonzero exit with nothing committed to stdout is the one signal
+mesa treats as failure, exactly as it does today when kokoro-rs produces no
+audio.
 
 ## `--format json`
 
-```json
-{
-  "text": "book a call with khora for tomorrow",
-  "segments": [
-    {
-      "text": "book a call with khora for tomorrow",
-      "start": 0.0,
-      "end": 2.14
-    }
-  ]
-}
+Output is JSON Lines, not a single document: one `\n`-terminated JSON object
+per line, flushed as written, each carrying a `type` discriminator. A reader
+must ignore any `type` it does not recognise — that is the whole extension
+mechanism. Full protocol and reasoning: `docs/streaming.md`.
+
+```
+{"type":"segment","index":0,"text":"book a call with khora for tomorrow","start":0.0,"end":2.14}
+{"type":"transcript","text":"book a call with khora for tomorrow"}
 ```
 
-`text` is the full corrected transcript; `segments` is one entry per
-completed utterance, each with its own `start`/`end` in seconds and its own
-corrected `text`. A single-utterance recording produces one segment whose
-text equals the top-level `text`.
+`segment` is one completed, corrected utterance and is never revised.
+`transcript` is always the last line on a run that produced one — the whole
+corrected text — so reading to EOF and parsing the last line is a correct
+reader on its own. A single-utterance recording produces one `segment` line
+whose text equals the `transcript` line's.
 
 ## Notes
 
@@ -245,9 +246,10 @@ text equals the top-level `text`.
   utterance. What auris ships instead is per-utterance flushing on a
   multi-utterance stream (see "stdin" above) — progressive output at
   utterance granularity, not word-by-word streaming.
-- **Where an utterance boundary falls is out of scope here.** This contract
-  fixes the flush-per-utterance guarantee; the endpointing/VAD design that
-  decides where one utterance ends and the next begins is task 926's.
+- **Where an utterance boundary falls is decided in `docs/streaming.md`.**
+  This contract fixes the flush-per-utterance guarantee; the endpointing/VAD
+  design that decides where one utterance ends and the next begins, and the
+  `speech`/`segment`/`transcript` line protocol that carries it, is there.
 - **Per-stream hotwords are confirmed, not an open question.**
   `create_stream_with_hotwords` exists in the Rust crate at v1.13.6 and is
   what lets a per-request vocabulary avoid the daemon's ~4 s reload in the
