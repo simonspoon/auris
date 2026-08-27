@@ -87,6 +87,11 @@ required regardless of engine — the misses are all near-homophones ("qora",
 "corvex", "aurus"), so a small edit-distance pass over a known term list handles
 them. That is now a first-class part of the design, not a fallback.
 
+**Implemented, task 950: see `docs/correction.md` and
+`spike/harness/vocab_correct.py`.** The chosen config (`tuned`, parakeet +
+per-word hotwords) goes from 83.3% to 96.3% name F1 with the pass applied,
+while WER also improves, 4.0% → 2.0%.
+
 ## Versions
 
 - `sherpa-onnx` 1.13.6 (Python wheel used for the spike; the Rust crate

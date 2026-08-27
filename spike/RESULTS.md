@@ -318,3 +318,57 @@ an unrelated slot, not the model correctly hearing either real occurrence.)
 - The name-accuracy metric used to be recall-only and rewarded babble; that was
   fixed in task 949 (§0). All F1/precision/recall numbers in this document,
   including this addendum's tables, are the corrected metric.
+
+## 7. Post-ASR vocabulary correction (task 950)
+
+Section 6 established that `khora` is never produced correctly by any engine
+or configuration tested here, prompted or biased — the gap left after biasing
+is a spelling problem, not an acoustic one. `spike/harness/vocab_correct.py`
+closes it with a lexical correction pass over the six hotword terms, run on
+decoded transcript text, ported from mesa's task-922 vocabulary correction
+(`frontend/src/liveRecognition.ts`), with one addition on top of the port: a
+correction requires an edit-distance match on top of mesa's sound-key match,
+because the sound-key rule alone rewrote 321 ordinary words from
+`/usr/share/dict/web2` at this project's vocabulary scale. Design rationale,
+the term-to-term, capitalization and edit-distance decisions, and full "what
+this does not fix" detail are in `docs/correction.md`; this section records
+the measurement only.
+
+Reproduction: `bash spike/harness/run_correction.sh`. Corrected transcripts
+and scores are written to `spike/results/corrected/<config>.tsv` and
+`<config>.score.json`, one pair per existing `spike/results/raw/*.tsv` and
+`spike/results/hotwords/*.tsv`.
+
+| Config | WER before | WER after | ΔWER | F1 before | F1 after | ΔF1 |
+|---|---|---|---|---|---|---|
+| parakeet-tdt-0.6b-int8 | 5.3% | 1.3% | −4.0p | 66.7% | 96.3% | +29.6p |
+| whisper-base.en-noprompt | 9.3% | 6.0% | −3.3p | 44.4% | 78.3% | +33.8p |
+| whisper-base.en-prompt | 4.7% | 3.3% | −1.3p | 75.0% | 84.6% | +9.6p |
+| whisper-medium.en-noprompt | 6.7% | 1.3% | −5.3p | 52.6% | 96.3% | +43.7p |
+| whisper-medium.en-prompt | 3.3% | 1.3% | −2.0p | 83.3% | 96.3% | +13.0p |
+| whisper-small.en-noprompt | 7.3% | 4.7% | −2.7p | 60.0% | 83.3% | +23.3p |
+| whisper-small.en-prompt | 3.3% | 1.3% | −2.0p | 83.3% | 96.3% | +13.0p |
+| whisper-tiny.en-noprompt | 12.0% | 8.0% | −4.0p | 35.3% | 78.3% | +43.0p |
+| whisper-tiny.en-prompt | 13.3% | 10.0% | −3.3p | 69.6% | 92.9% | +23.3p |
+| hot_bpe_1.0 | 4.0% | 1.3% | −2.7p | 78.3% | 96.3% | +18.0p |
+| hot_bpe_2.0 | 4.0% | 1.3% | −2.7p | 78.3% | 96.3% | +18.0p |
+| hot_bpe_3.0 | 4.0% | 1.3% | −2.7p | 78.3% | 96.3% | +18.0p |
+| hot_bpe_3.5 | 4.0% | 1.3% | −2.7p | 78.3% | 96.3% | +18.0p |
+| hot_bpe_4.0 | 6.0% | 4.0% | −2.0p | 80.0% | 92.9% | +12.9p |
+| hot_bpe_4.5 | 9.3% | 8.0% | −1.3p | 80.0% | 85.7% | +5.7p |
+| hot_bpe_5.0 | 9.3% | 8.7% | −0.7p | 84.6% | 85.7% | +1.1p |
+| hot_bpe_6.0 | 22.0% | 20.7% | −1.3p | 71.0% | 78.8% | +7.8p |
+| hot_bpe_7.0 | 69.3% | 69.3% | +0.0p | 42.9% | 41.9% | −1.0p |
+| mbs | 5.3% | 1.3% | −4.0p | 66.7% | 96.3% | +29.6p |
+| **tuned** (chosen config) | **4.0%** | **2.0%** | **−2.0p** | **83.3%** | **96.3%** | **+13.0p** |
+
+WER never regresses in any config. Name F1 improves everywhere except
+`hot_bpe_7.0`, where the pass folds a babble fragment onto a real term
+spelling and adds one false positive on an already-failed decode — see
+`docs/correction.md`, "What this does not fix," for the mechanism.
+
+The maximum name F1 reached by any config after correction is 96.3%, not
+100% — the one residual error (u06's fixture pun producing a second, already
+correctly-spelled "Helios") is out of reach for a lexical pass by
+construction. `docs/correction.md` covers what the pass does and does not
+fix in full, including the acceptance-criterion shortfall.

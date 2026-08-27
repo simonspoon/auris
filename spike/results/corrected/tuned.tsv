@@ -1,0 +1,8 @@
+u01	Close task 924 and open a follow-up under auris for the parakeet spike.
+u02	Hey mesa add a note to khora that headless mode is the default now.
+u03	Create a task in mesa called wire qorvex to the iOS simulator and assign it to me.
+u04	Helios needs an index refresh before task 118 can start.
+u05	Remind me to check kokoro's latency numbers against Whisper before we pick a winner.
+u06	So basically what happened is auris transcribed Helios as Helios again which is the third time this week and I think we need a custom vocabulary list for mesa terms before we ship, can you open a bug for that?
+u07	mark task 730 done and task 731 blocked on khora
+u08	Qorvex tap failed twice on the Android emulator, log it under auris and link it to task 902.
