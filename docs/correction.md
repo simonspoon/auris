@@ -65,6 +65,18 @@ helios :3.0
 kokoro :3.0
 ```
 
+That "cannot drift apart" claim holds for the file, not yet for the parser
+reading it: the spike's `read_hotword_terms` shares the file with
+`src/vocabulary.rs` but not its validator, since it is an independent,
+permissive implementation (`term = line.split(":", 1)[0].strip()`) rather than
+a call into the crate. A line like `khora:6.5`, with no space before the
+colon, is silently accepted here and would feed the correction pass a term the
+crate's parser would refuse to load at all
+(`VocabularyError::NoSpaceBeforeBoost`). The guarantee is only structural once
+the port into `src/` reads terms through the same validated list the biasing
+path uses — `Vocabulary`'s terms, built from `Term` — rather than through a
+second parser that happens to agree with the first today.
+
 ## Rejected: `/usr/share/dict/words` as the protected-word guard
 
 The natural instinct is to guard against over-correction with a real

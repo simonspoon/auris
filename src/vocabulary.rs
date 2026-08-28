@@ -2,9 +2,13 @@
 //! (docs/vocabulary.md "The file format", "Bounds", "The cap",
 //! "Validation") into the per-stream hotwords string
 //! [`crate::engine::Recognizer::decode_with_hotwords`] takes. This module
-//! owns parsing only: the later post-ASR correction pass (docs/correction.md)
-//! reuses [`Term`], with boosts discarded, so "the correction vocabulary and
-//! the biasing vocabulary cannot drift apart."
+//! owns parsing only. The post-ASR correction pass (docs/correction.md)
+//! today lives outside the crate, as the spike `vocab_correct.py`, and reads
+//! the same hotwords file through its own, more permissive parser — the two
+//! can disagree on what counts as a valid line. Once that pass is ported in,
+//! it must reuse [`Term`], with boosts discarded, so "the correction
+//! vocabulary and the biasing vocabulary cannot drift apart" becomes true by
+//! construction rather than by convention.
 //!
 //! docs/vocabulary.md settled the shape of the file and the numbers below;
 //! this module is a direct translation of its "Validation" and "The cap"
