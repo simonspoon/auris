@@ -372,3 +372,175 @@ The maximum name F1 reached by any config after correction is 96.3%, not
 correctly-spelled "Helios") is out of reach for a lexical pass by
 construction. `docs/correction.md` covers what the pass does and does not
 fix in full, including the acceptance-criterion shortfall.
+
+## 8. Addendum, 2026-08-28: what `khora` actually needs (task 959)
+
+Section 6 recorded that `khora` is never produced correctly and left the
+reason at "not reachable from this audio". Task 944 then found a phrasing
+where it *is* produced — the bare "hey khora hey qorvex" — and left the
+contradiction uncharacterised, which is why `khora` is absent from
+`tests/fixtures/manifest.tsv`. This section closes that gap and, in the
+process, overturns the obvious reading of `hotwords.txt`'s `khora :6.5`.
+
+### The axis is grammatical embedding; the boost is a gate
+
+A ladder of carriers around `khora` was synthesised twice over, with macOS
+`say -v Samantha` and with kokoro-rs, and decoded unbiased and biased.
+
+| Carrier | say, unbiased | say, biased | kokoro, unbiased | kokoro, biased |
+|---|---|---|---|---|
+| "khora" | Cora | Qua | Cora | Cora |
+| "hey khora" | Hey Cora. | qora. | Hey Cora. | Hey Cora. |
+| "hey khora hey qorvex" | Hey Cora, hey Corvax. | Hey Cora, hey Corvax. | Hey Cora Hey Corvex. | Hey Cora Hey Corvex. |
+| "add a note to khora" | Add a note to Korra. | add a note to qor | Add a note to Cora. | Add a note to Qora. |
+| "hey mesa add a note to khora" | Hey Messa add a note to Korra. | Hey mesa add a note qora | Hey Mesa, add a note to Cora. | Hey mesa, add a note to qor |
+| "hey mesa … that headless mode is the default now" | Hey Messa … to Korra … | hey mesa … to qora … | Hey Mesa … to Cora … | Hey mesa … to qor … |
+| "khora that headless mode is the default now" | Cora that headless … | qoress mode is the default now. | Cora that headless … | Quora that headless … |
+| "the khora tool is running" | The Cora tool is running. | the qor tool is running. | The Cora Tool is running. | The Quratool is running. |
+| "send it to khora" | Send it to Cora. | Send it to Cora. | Send it to Cora. | send it to qor |
+| "open khora" | Open Cora | Open qora | Open Cora. | open qor |
+| "khora is running" | Kora is running. | Quora is running. | Cora is running. | Cora is running. |
+
+Biased here is the production list with `khora` at `:3.0`. **At that boost the
+literal string `khora` appears in none of the clips, on either synthesiser** —
+including the very phrase task 944 reported as landing it. So the reported
+success was never a property of the phrase alone. (A thirteenth carrier,
+"note to khora that headless", is not in the table: its `say` clip decoded to
+nothing in both conditions, and `auris` exits 1 with "no audio samples
+decoded" on it, so it is a broken fixture rather than a result.)
+
+Raising the boost on the short carriers finds it:
+
+| Carrier | 3.0 | 6.5 | 8.0 |
+|---|---|---|---|
+| "khora" (say) | Qua | **khora** | **khora** |
+| "khora" (kokoro) | Cora | qora q | qora q |
+| "hey khora" (say) | qora. | qora. | qora. |
+| "hey khora" (kokoro) | Hey Cora. | He **khora**. | He **khora**. |
+| "hey khora hey qorvex" (say) | Hey Cora, hey Corvax. | Hey kora, hay khorax. | Hey Cora, hay khorax. |
+| "hey khora hey qorvex" (kokoro) | Hey Cora Hey Corvex. | Hey **khora** qorvex. | He **khora** qorvex. |
+| "add a note to khora" (say) | add a note to qor | add a note to qor | add a note to qor |
+| "add a note to khora" (kokoro) | Add a note to Qora. | Add a note to Qora. | Add a note to Qora. |
+| "open khora" (say) | Open qora | Open qora | Quaken **khora** |
+| "open khora" (kokoro) | open qor | open qor | open **khora** |
+
+Read together, the rule is not about length. The four carriers that ever
+produce `khora` are "khora", "hey khora", "hey khora hey qorvex" and "open
+khora"; the eight that never do are "add a note to khora", "send it to
+khora", "the khora tool is running", "khora is running", "khora that
+headless mode is the default now", the two longer `hey mesa` carriers, and
+both real fixtures. Counting words does not separate those sets — "hey khora
+hey qorvex" is four words and lands, while "khora is running" is three and
+never does, and "send it to khora" is four and never does. What separates
+them is **grammatical embedding**:
+
+- **Where `khora` stands alone as an address or label** — bare, after "hey",
+  or as the object of a one-word imperative — it can be produced, but only at
+  a boost of 6.5 or above, and then only for some voices. `say` lands the
+  bare word where kokoro gives "qora q"; kokoro lands "hey khora hey qorvex"
+  where `say` turns it into "khorax".
+- **Once `khora` is a constituent of an ordinary English clause** — after a
+  preposition ("to khora"), under a determiner ("the khora tool"), or as the
+  subject of a verb ("khora is running") — it is never produced, at any boost
+  from 3.0 to 8.0, on either synthesiser. Every such row decodes "qora",
+  "qor", "Cora", "Quora" or "Korra". Three surrounding words of ordinary
+  English are enough; the sentence does not have to be long.
+- When it does land, it usually **damages a neighbour**: "Hey" becomes "He",
+  "open khora" becomes "Quaken khora".
+
+Task 944's observation therefore reproduces exactly, and is now bounded: it
+was boost-gated and voice-specific, not evidence that longer sentences were
+merely unlucky. Since mesa's speech driver sends sentences, the regime auris
+actually operates in is the one where biasing never reaches this term.
+**Hotword biasing is not a mechanism that can be pushed harder to fix
+`khora`.** That is section 7's correction pass's job, and it does it.
+
+### `khora :6.5` is a threshold, not an escalation
+
+The obvious reading of `hotwords.txt` — that 6.5 is someone escalating a
+number that was not working, and that it should come back down to 3.0 with
+the others — was tested and is **wrong**. Sweeping `khora` with `qorvex`
+held at its production `:5.0`:
+
+| khora boost | u02 | u07 |
+|---|---|---|
+| 3.0 | … to qora … | … blocked on **qor** |
+| 3.5 | … to qora … | … blocked on **qor** |
+| 4.0 | … to qora … | … blocked on **qor** |
+| 4.5 | … to qora … | … blocked on **qor** |
+| 5.0 | … to qora … | … blocked on **qor** |
+| 5.5 | … to qora … | … blocked on **qor** |
+| 6.0 | … to qora … | … blocked on **qor** |
+| **6.5** | … to qora … | … blocked on **qora** |
+| 8.0 | … to qora … | … blocked on **qora** |
+
+u07's slot is a three-character fragment, "qor", everywhere below 6.5, and
+becomes the four-character "qora" exactly at 6.5. That boundary matters
+because `spike/harness/vocab_correct.py` skips any token shorter than four
+characters (`if len(token) < 4`, the min-token-length gate ported from
+mesa). Run directly against both strings, the pass leaves "blocked on qor"
+untouched and rewrites "blocked on qora" to "blocked on khora". **6.5 is the
+minimum boost at which the term survives into a form the correction pass can
+repair.** Below it the term is lost for good; 8.0 recovers nothing further.
+The sweep steps in halves, so 6.5 is the lowest *tested* value that works and
+the true boundary lies somewhere in (6.0, 6.5] — close enough that moving the
+file's value off 6.5 would be tuning against an untested gap.
+
+Measured end to end over the eight fixtures, lowering `khora` alone is no
+better before correction and worse on both metrics after it:
+
+| Config | WER | WER corrected | Name F1 | F1 corrected |
+|---|---|---|---|---|
+| khora 3.0, qorvex 5.0 | 4.0% | 2.7% | 83.3% | 92.3% |
+| **khora 6.5, qorvex 5.0 (production)** | 4.0% | **2.0%** | 83.3% | **96.3%** |
+| all six at 3.0 | 4.0% | 1.3% | 78.3% | 96.3% |
+
+The first row was decoded by the release binary and scored with
+`spike/harness/score.py`; the other two are the committed
+`spike/results/hotwords/tuned` and `hot_bpe_3.0` runs, whose decodes came
+from `parakeet_hotwords_bench.py`. The scorer is the same in all three cases,
+and the uniform-3.0 config was re-decoded through the binary as a check — it
+reproduces `hot_bpe_3.0.tsv` byte-for-byte — so the rows are comparable.
+
+`spike/fixtures/hotwords.txt` is therefore left unchanged, with 6.5 now
+resting on this measurement rather than on whoever first raised it.
+
+### What this does not fix
+
+The uniform 3.0 row above is the best config in the table after correction —
+1.3% WER against the production config's 2.0% — because at 3.0 u03 keeps the
+words "wire up" that `qorvex :5.0` deletes, and its "corvex" is then
+corrected to "qorvex" anyway. Taking that win means dropping `qorvex` from
+5.0 to 3.0, which is a different decision from this task's and is not free
+today: `u03_decodes_mesa_names_correctly_only_with_vocabulary` in
+`src/vocabulary.rs` asserts that biasing *alone* lands `qorvex` on u03, with
+no correction pass in the loop, and `docs/vocabulary.md`'s "Before and after"
+example says the same. Both hold only while `qorvex` stays at 5.0. The trade
+becomes available once the correction pass is ported into the crate and the
+crate's own behaviour includes it; until then the uniform config trades a
+passing test for a better benchmark number. Checked, so the follow-up does
+not have to re-derive it: at uniform 3.0 the release binary reproduces
+`spike/results/hotwords/hot_bpe_3.0.tsv` byte-for-byte, and `qorvex` still
+lands on `tests/fixtures/mesa-names.wav`, so `tests/fixtures.rs` would
+survive the change even though `src/vocabulary.rs` would not.
+
+### Reproduction
+
+```
+./target/release/auris --no-daemon -q -m spike/models/parakeet \
+    [--vocabulary-file FILE] <input.wav>
+```
+
+The `u01`-`u08` inputs are the committed `spike/fixtures/wav/`. The carrier
+ladder's own clips were scratch and are **not** committed: they were made
+with `say -v Samantha` piped through `afconvert -f WAVE -d LEI16@16000 -c 1`,
+and with kokoro-rs resampled to 16 kHz mono, one clip per carrier phrase
+listed above. The correction pass was run as
+`spike/harness/vocab_correct.py --hotwords spike/fixtures/hotwords.txt`.
+
+Section 1's caveat applies here in full and is worth repeating, because this
+section leans harder on individual transcripts than any other: these are TTS
+fixtures, so the absolute numbers are a floor and only the ordering is
+trustworthy. The length rule and the 6.5 threshold are claims about this
+model on synthetic speech, not about how a person saying "khora" will be
+heard.

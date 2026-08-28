@@ -13,11 +13,32 @@ and its "What it does not fix" section already names the gap directly:
 `khora` is never produced by any engine or configuration tested in this spike
 — whisper or parakeet, prompted or biased. Every parakeet run at every boost
 hears "qora"; raising khora's boost alone changes nothing (`spike/RESULTS.md`
-§6, "What this does not fix"). Biasing pushes the acoustic model toward a
-vocabulary; it cannot conjure a token sequence the model never produces for
-that audio. The gap that's left over is exactly what a correction pass over
-known term spellings can close cheaply, because the misses are all
+§6, "What this does not fix"). Task 959 later found the one regime where the
+model *will* spell it — `khora` standing alone as an address, at a boost of
+6.5 or more, on some voices (`spike/RESULTS.md` §8) — which narrows the claim
+without weakening it: every fixture in this spike is a sentence, and in a
+sentence the term is still never produced. Biasing pushes the acoustic model
+toward a vocabulary; it cannot conjure a token sequence the model never
+produces for that audio. The gap that's left over is exactly what a
+correction pass over known term spellings can close cheaply, because the
+misses are all
 near-homophones — "qora", "corvex", "aurus" — not garbage.
+
+**The two layers are not independent, and biasing still has a job to do.**
+Task 959 (`spike/RESULTS.md` §8) swept `khora`'s boost against the two
+fixtures that actually contain the word. Below a boost of 6.5 the recognizer
+renders u07's slot as "qor"; at 6.5 and above it renders "qora". Three
+characters against four, and the difference is decisive here: this pass
+skips any token shorter than four characters (`if len(token) < 4`, mesa's
+min-token-length gate, kept as ported). Run against both strings directly,
+it leaves "blocked on qor" exactly as it found it and rewrites "blocked on
+qora" to "blocked on khora". So biasing cannot produce `khora` in a
+sentence at any boost — but it does decide whether what it produces instead
+is long enough for this pass to recognise as a mishearing at all. A term
+this pass is expected to rescue therefore constrains the boost that term is
+given, which is why `khora :6.5` in the hotwords file is a threshold rather
+than an escalation, and why lowering it to match the others measurably
+loses `khora` in u07.
 
 ## The decision to port mesa, not invent a new algorithm
 

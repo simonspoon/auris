@@ -231,27 +231,22 @@ fn not_audio_is_a_clean_error() {
 ///   unbiased, so it fails the "absent unbiased" half of the contrast.
 ///
 /// `khora` is deliberately NOT in this fixture, and that is a finding in its
-/// own right, not a phrasing failure to paper over. Diagnostic: does
-/// `spike/fixtures/wav/u02.wav` ("hey mesa add a note to khora that
-/// headless mode is the default now" — a real `say`-generated recording,
-/// not kokoro-rs) land "khora" when biased with `hotwords.txt`'s existing
-/// 6.5 boost (the highest boost value in that file — whoever wrote it had
-/// already found khora to be the hard case)? No: unbiased it decodes
-/// "Korra", biased it decodes "qora" — still not "khora", on real
-/// (non-kokoro) audio, at the file's highest boost. That rules out
-/// "kokoro-rs specifically defeats khora" — the same near-miss happens on
-/// the original spike fixture too. Yet in one specific phrasing tried while
-/// searching for the mesa-names pair above, "hey khora hey qorvex"
-/// (kokoro-rs, `af_heart`) DID decode the exact string "khora" when biased
-/// (unbiased "Hey Cora Hey
-/// Corvex.", biased "Hey khora qorvex.", also deterministic across repeated
-/// runs) — so "khora" is not unconditionally unreachable either. The honest
-/// summary: landing the literal string "khora" via hotword biasing is real
-/// but highly context-sensitive in a way this investigation did not fully
-/// characterise, unlike `qorvex`/`helios`/`kokoro`, which land reliably
-/// across the phrasings tried. That inconsistency, not a blanket
-/// impossibility, is why `khora` was left out of the fixture actually
-/// committed here.
+/// own right, not a phrasing failure to paper over. Task 959 characterised
+/// it (`spike/RESULTS.md` §8), and the axis is grammatical embedding rather
+/// than length: once `khora` sits inside an ordinary English clause — after
+/// a preposition, under a determiner, or as the subject of a verb — it is
+/// never produced, at any boost the vocabulary bounds allow, on either
+/// synthesiser. `spike/fixtures/wav/u02.wav` decodes "Korra" unbiased and
+/// "qora" biased. Where it stands alone as an address or label it can land,
+/// but only at a boost of 6.5 or above and only for some voices, usually
+/// damaging a neighbour ("hey khora" becomes "He khora"). The kokoro-rs
+/// phrase "hey khora hey qorvex" that lands `khora` is an instance of that
+/// narrow address case, not a counterexample to it. So a `khora` fixture
+/// would be asserting the one shape of utterance auris does not receive,
+/// which is why the committed pair is `qorvex`/`helios` — they land
+/// reliably across the phrasings tried.
+/// Recovering `khora` from a real sentence is the post-ASR correction
+/// pass's job (`docs/correction.md`), not biasing's.
 #[test]
 fn mesa_names_lands_only_when_biased() {
     let Some(model_dir) = spike_model_dir() else {

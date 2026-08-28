@@ -164,8 +164,19 @@ per-stream separator sherpa-onnx expects) and passes them down.
 ## Bounds
 
 The `:score` value is accepted in **(0.0, 8.0]** and defaults to the global,
-3.0. The measured-good range is 3.0 for ordinary terms and up to 6.5 for a hard
-one.
+3.0. 3.0 is the right value for an ordinary term; the one term measured to
+need more is `khora`, at 6.5.
+
+That 6.5 is a threshold, not a licence to escalate. `spike/RESULTS.md` §8
+sweeps it: `khora` is never spelled correctly in a sentence at *any* boost
+this range allows, so the boost is not buying the term — it is buying the
+*length* of the misdecode. Below 6.5 the recognizer renders u07's slot as
+"qor", three characters, which the post-ASR correction pass skips as too
+short to judge; at 6.5 it renders "qora", four characters, which that pass
+rewrites to `khora`. Every boost between 3.0 and 6.0 was measured and lands
+on the wrong side of that line, and 8.0 recovers nothing 6.5 does not. So
+raise a term above 3.0 only with a measurement of that term saying what the
+extra buys, and expect the answer to be a step rather than a slope.
 
 The upper guard rail is not arbitrary. `spike/RESULTS.md`'s uniform sweep shows
 the transcript coming apart as the boost rises — 4.0% WER at scores 1 through
