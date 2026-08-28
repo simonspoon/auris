@@ -1,0 +1,40 @@
+u01	close task 924 and open a follow up under auris for the parakeet spike
+u02	hey mesa add a note to khora that headless mode is the default now
+u03	create a task in mesa called wire up qorvex to the ios simulator and assign it to me
+u04	helios needs an index refresh before task 118 can start
+u05	remind me to check kokoro's latency numbers against whisper before we pick a winner
+u06	so basically what happened is auris transcribed helios as hell EOS again which is the third time this week and I think we need a custom vocabulary list for mesa terms before we ship, can you open a bug for that
+u07	mark task 730 done and task 731 blocked on khora
+u08	qorvex tap failed twice on the android emulator, log it under auris and link it to task 902
+u09	khora, what's the rtf on the warm parakeet run, the one from this morning not last night's?
+u10	the sherpa-onnx build pulled in a new int8 encoder. cold start is under four seconds now.
+u11	mesa, log this under task nine two four please
+u12	auris keeps dropping the first syllable on khora when i dictate straight into stdin, and it happens every single time, not just occasionally. it's not the daemon, i already checked twice, and i even reloaded the vocabulary file to be sure
+u13	seven thirty is the one blocking khora integration, not seven eighteen, i keep mixing those two up
+u14	so i was staring at the rtf numbers for like twenty minutes trying to figure out why parakeet was so much slower than the warm benchmark suggested, and then i realized the daemon had reloaded the model because someone had switched vocabulary files on task 118, which forces a full reload instead of just serving the new list, so that's probably what khora needs fixed before we touch qorvex again
+u15	can you check whether the tdt decoder still hangs on silence, or did that get fixed with the energy gate?
+u16	helios is fine now
+u17	kokoro's wer dropped two points after the correction pass. that's a real improvement
+u18	task 851 is done, i pushed it an hour ago. task 852 is still open, and khora is blocked on the cdp handshake again, same as last week
+u19	is auris even listening right now?
+u20	qorvex, kokoro, and mesa are all fine, nothing to report there. it's just khora and helios that keep tripping up the recognizer, and honestly i'm not sure which one is worse at this point
+u21	avfoundation keeps grabbing the wrong input device on this machine, can someone check the mic permissions?
+u22	mark task twelve done
+u23	khora needs a second pass on the onnx export before we ship, the tdt joiner is timing out on anything longer than about eight seconds of audio. i already filed task 940 for it, but i think it's actually a sherpa version mismatch, not a model problem
+u24	hey, quick one, is the daemon even up?
+u25	auris and khora both mis-hear task nine forty the same way, which is kind of funny actually, because they're nowhere near the same word phonetically
+u26	put that under helios instead of mesa, wrong project
+u27	okay so i think what's actually happening is when i dictate a really long rambling sentence like this one into mesa's live view the punctuation model just gives up somewhere around the third clause and everything after that turns into one giant run-on, which is exactly the kind of thing that's going to tank our sentence boundary f1 if we don't fix it before the khora demo
+u28	stdin is empty, nothing to transcribe
+u29	so kokoro sounds great but it's auris we actually need working for khora's onboarding flow, right? because nobody's going to sit through a fifteen second load time just to hear a demo
+u30	task seven eighteen, task seven nineteen, and task seven twenty are all mine today, plus whatever spills over from yesterday's triage
+u31	is the daemon up? i can't tell from here. check the socket.
+u32	the build's been red since last night. nobody's looked at it yet. i'll take it after lunch.
+u33	khora dropped every websocket frame during the recording. i checked the console and there's nothing useful in it. we'll need to reproduce it live before filing anything.
+u34	did khora ever pick up that viewport fix? i thought it landed last week. maybe i'm thinking of a different branch.
+u35	auris is still mishearing task nine forty as task ninety. i've tried the vocabulary list twice. it's not fixing it.
+u36	helios needs reindexing after the merge. the symbol graph is stale for anything touched in the last two days. i'll kick it off once the build finishes.
+u37	khora's still blocked on task 118, same as before. qorvex passed all its android runs this morning though, so at least something's moving. i want to close out the ios flake before we touch the web suite again. can we get someone on the cdp handshake today?
+u38	kokoro's latency numbers finally came in under budget. mesa's speech driver should be able to switch over without a config change. i still want to run the ab test overnight before we flip the default. worst case we just roll it back in the morning.
+u39	auris flagged the segment as silence but there was clearly speech in it. i re-ran it through khora's mic capture to compare. same result both times.
+u40	qorvex's tap coordinates were off by a few pixels on the new simulator image. i recalibrated against the accessibility tree instead. seems stable now.

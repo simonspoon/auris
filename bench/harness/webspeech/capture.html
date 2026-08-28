@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>auris webspeech capture</title>
+</head>
+<body>
+<!--
+  Capture page for a Web Speech baseline against the bench/corpus fixtures.
+
+  Driven by capture.py over CDP -- this page never runs unattended. For each
+  utterance the driver calls window.__wsReset(), plays the utterance's WAV
+  into the system default audio input (see README.md for why that has to be
+  an OS-level loopback, not getUserMedia's fake device), then polls
+  window.__wsFinal until the audio has had time to finish and the recognizer
+  has had time to settle.
+
+  Two recognizers run in this one page, on purpose:
+
+    1. webkitSpeechRecognition -- the thing actually being measured.
+    2. A WebAudio RMS meter on getUserMedia -- a diagnostic, not the
+       measurement. It exists because Chrome's speech recognizer opens the
+       system default input directly and does NOT go through getUserMedia's
+       media-stream pipeline (see README.md finding 2). Without this meter
+       running in the SAME session, a silent loopback and a genuinely failed
+       recognition look identical from outside: both are "no results." The
+       meter lets capture.py tell those apart and abort loudly instead of
+       silently scoring a mis-wired loopback as 30 ASR failures.
+-->
+<p>auris webspeech capture -- driven by capture.py, not for interactive use.</p>
+<script>
+window.__wsReady = false;
+window.__wsFinal = [];
+window.__wsInterim = "";
+window.__wsError = null;
+window.__wsStarted = false;
+window.__wsEnded = false;
+window.__micRMS = 0;
+
+let recognition = null;
+
+function startRecognition() {
+  const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
+  recognition = new SpeechRecognition();
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.lang = "en-US";
+
+  recognition.onstart = () => {
+    window.__wsStarted = true;
+    window.__wsEnded = false;
+  };
+
+  recognition.onresult = (event) => {
+    let interim = "";
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const transcript = event.results[i][0].transcript;
+      if (event.results[i].isFinal) {
+        window.__wsFinal.push(transcript);
+      } else {
+        interim += transcript;
+      }
+    }
+    window.__wsInterim = interim;
+  };
+
+  recognition.onerror = (event) => {
+    window.__wsError = event.error;
+  };
+
+  recognition.onend = () => {
+    // Chrome ends a recognition session after a stretch of silence even
+    // with continuous=true. A 40-utterance run has silence between every
+    // utterance, so restarting here is required, not defensive -- without
+    // it only the first utterance would ever be captured.
+    window.__wsEnded = true;
+    if (!window.__wsResetting) {
+      try {
+        recognition.start();
+      } catch (e) {
+        // start() throws if called while already starting; onend will
+        // fire again shortly and retry.
+      }
+    }
+  };
+
+  recognition.start();
+}
+
+// Called by capture.py between utterances. Clears the transcript arrays and
+// restarts recognition from a clean slate, so one browser session -- one
+// model load, one set of permission grants -- can capture the whole corpus
+// instead of a fresh page per utterance.
+window.__wsReset = function () {
+  window.__wsResetting = true;
+  window.__wsFinal = [];
+  window.__wsInterim = "";
+  window.__wsError = null;
+  window.__wsStarted = false;
+  window.__wsEnded = false;
+  window.__micRMS = 0;
+  try {
+    if (recognition) recognition.stop();
+  } catch (e) {
+    // ignore -- may already be stopped
+  }
+  setTimeout(() => {
+    window.__wsResetting = false;
+    startRecognition();
+  }, 200);
+};
+
+// Diagnostic meter: reads getUserMedia's own stream, independent of
+// whatever webkitSpeechRecognition is hearing. See the file header comment
+// for why this has to run in the same session as the recognizer above.
+async function startMicMeter() {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const source = audioCtx.createMediaStreamSource(stream);
+  const analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 2048;
+  source.connect(analyser);
+  const buffer = new Float32Array(analyser.fftSize);
+
+  function tick() {
+    analyser.getFloatTimeDomainData(buffer);
+    let peak = 0;
+    for (let i = 0; i < buffer.length; i++) {
+      peak = Math.max(peak, Math.abs(buffer[i]));
+    }
+    window.__micRMS = Math.max(window.__micRMS, peak);
+    requestAnimationFrame(tick);
+  }
+  tick();
+}
+
+startRecognition();
+startMicMeter()
+  .then(() => { window.__wsReady = true; })
+  .catch((e) => { window.__wsError = "mic-meter: " + e.message; window.__wsReady = true; });
+</script>
+</body>
+</html>
