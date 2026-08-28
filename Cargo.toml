@@ -10,3 +10,5 @@ keywords = ["stt", "speech-to-text", "parakeet", "cli", "onnx"]
 categories = ["command-line-utilities", "multimedia::audio"]
 
 [dependencies]
+hound = "3.5.1"
+rubato = "5.0.0"
