@@ -1,0 +1,12 @@
+[package]
+name = "auris"
+version = "0.1.0"
+edition = "2024"
+description = "Command-line speech-to-text with Parakeet TDT 0.6B v2, transcribing audio from stdin"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/simonspoon/auris"
+readme = "README.md"
+keywords = ["stt", "speech-to-text", "parakeet", "cli", "onnx"]
+categories = ["command-line-utilities", "multimedia::audio"]
+
+[dependencies]

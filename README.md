@@ -39,6 +39,9 @@ speech back with auris, `-q` and piped stdio and all. The ~4 s load is paid
 once, by `auris serve`; every other invocation is a socket write and a
 socket read.
 
+auris is deliberately one crate, not a workspace: one binary, one job, and
+nobody should split it into a workspace on reflex.
+
 ## Install
 
 One binary, nothing bundled inside it: everything auris needs at runtime is
@@ -514,3 +517,19 @@ whose text equals the `transcript` line's.
   making per-call latency match the 0.082 warm RTF instead of the 0.634
   cold one — accepted in `docs/engine.md` as "a fixed cost paid once by a
   daemon rather than per utterance."
+
+## License
+
+GPL-3.0-or-later. This reverses the earlier expectation, from before the
+engine decision, that auris could be MIT the way kokoro-rs's sibling tools
+are — `sherpa-onnx`'s prebuilt static archive links `espeak-ng` and
+`piper_phonemize` unconditionally, both GPL, and neither has a feature
+flag that excludes it. auris never phonemises anything — that machinery
+belongs to text-to-speech, not ASR — but GPL's copyleft triggers on
+linking a covered work into the binary, not on whether the linked code
+runs. Full reasoning and the exact `build.rs` lines: `THIRD-PARTY.md`.
+
+Not covered: the Parakeet TDT 0.6B v2 weights fetched into
+`~/.cache/auris` at runtime are CC-BY-4.0, NVIDIA's, and never
+redistributed by this repository — see `THIRD-PARTY.md` for the
+attribution and source links.

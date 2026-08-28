@@ -1,5 +1,11 @@
+/target
+.claude/
+.DS_Store
+
 spike/models/
 __pycache__/
 .venv/
 *.wav.tmp
 spike/fixtures/hyp_test.tsv
+
+# Model cache: ~/.cache/auris, outside the repo, so nothing to ignore here.
