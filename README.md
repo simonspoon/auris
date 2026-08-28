@@ -390,7 +390,7 @@ landed on stdout, never as the primary signal.
 | --- | --- |
 | `PATH` | Audio file to transcribe (positional). Given, stdin is simply not read; omitted, stdin is read unless it is a terminal. |
 | `-m, --model NAME` | Model to use: a name from `--list-models`, or a path to a model directory (default `parakeet-tdt-0.6b-v2-int8`). |
-| `--vocabulary-file FILE` | Terms for hotword biasing and post-ASR correction, one `term :boost` per line (default: none — biasing and correction both off). Served per-request against the warm recognizer; a change in per-word boosts costs a reload — see "The daemon". |
+| `--vocabulary-file FILE` | Terms for hotword biasing and post-ASR correction, one `term :boost` per line (default: none — biasing and correction both off). Served per-request against the warm recognizer; a vocabulary change is always free and never reloads it — see "The daemon". |
 | `--format text\|json` | Output shape (default `text`). See `--format json` below. |
 | `--no-download` | Fail rather than fetch a missing model on a real run; `--list-models` is always offline, flag or not. |
 | `--list-models` | Print installed model names, one per line, and exit. |
@@ -423,18 +423,17 @@ always means loading a different recognizer.
 Three things stay fixed at recognizer construction regardless of per-request
 hotwords: `hotwords_score` — a single *global* boost, not per-word and not
 settable per stream — plus `bpe_vocab` and `modeling_unit`, the synthesised
-sentencepiece vocab `docs/engine.md` requires for this model. This matters
-because the spike's headline result (`docs/engine.md`) came from
-*differentiated per-word* boosts (`khora :6.5`, `qorvex :5.0`, the rest
-`3.0`), built through the construction-time `hotwords_file` path — and
-whether the inline per-stream string in `create_stream_with_hotwords`
-accepts that same `word :score` syntax, or only a flat term list scored
-uniformly by the recognizer's one global `hotwords_score`, is not verified.
-So the defined behaviour is: a request whose vocabulary needs only the
-daemon's already-loaded per-word boosts is served per-stream, cheaply; a
-request needing *different* per-word boosts than what the daemon loaded
-falls back to a full recognizer rebuild (~4 s, once). That fallback is
-specified behaviour here, not a caveat to resolve later.
+sentencepiece vocab `docs/engine.md` requires for this model. The global is
+fixed at 3.0 and is not exposed as a CLI choice (`docs/vocabulary.md`): it is
+the value that reproduces the spike's headline 83.3% name-F1 / 4.0% WER
+result, and per-word `:score` syntax (`khora :6.5`, `qorvex :5.0`, the rest
+`3.0`) works identically through `create_stream_with_hotwords` as it does
+through the construction-time `hotwords_file` path — verified empirically, a
+per-stream string and a `hotwords_file` carrying the same terms and scores
+produce byte-identical transcripts (`docs/vocabulary.md`). So **every
+vocabulary change, including a changed per-word boost, is served per-stream
+against the already-loaded recognizer and never rebuilds it** — there is no
+fallback path and no reload cost to pay.
 
 `--no-daemon` is the escape hatch: it loads the recognizer in-process and
 pays the ~4 s cold start on every call, with no socket, no background
@@ -506,12 +505,12 @@ whose text equals the `transcript` line's.
   `speech`/`segment`/`transcript` line protocol that carries it, is there.
 - **Per-stream hotwords are confirmed, not an open question.**
   `create_stream_with_hotwords` exists in the Rust crate at v1.13.6 and is
-  what lets a per-request vocabulary avoid the daemon's ~4 s reload in the
-  common case. What remains unconfirmed is whether that inline path accepts
-  the same per-word `word :score` syntax the construction-time
-  `hotwords_file` does, or only a flat term list under one global
-  `hotwords_score` — that should be settled empirically in task 933 before
-  the daemon relies on the cheap path for anything but a uniform boost.
+  what lets a per-request vocabulary avoid ever reloading the recognizer.
+  Whether that inline path accepts the same per-word `word :score` syntax
+  the construction-time `hotwords_file` does was the open question — it was
+  settled empirically (`docs/vocabulary.md`): it does, byte-identically, so
+  the daemon serves every vocabulary change per-stream, not only a uniform
+  boost.
 - **A warm daemon holds ~1.5 GB resident** (`docs/engine.md`'s measured peak
   RSS for parakeet int8), for as long as it stays warm. That is the cost of
   making per-call latency match the 0.082 warm RTF instead of the 0.634

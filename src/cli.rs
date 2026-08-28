@@ -16,6 +16,7 @@ use clap::{Parser, ValueEnum};
 
 use crate::audio;
 use crate::engine::{EngineConfig, Recognizer};
+use crate::vocabulary::Vocabulary;
 
 /// Exit codes, copied from kokoro-rs (README "Exit codes"), not reinvented.
 const OK: i32 = 0;
@@ -62,6 +63,11 @@ pub struct Args {
     /// Output shape
     #[arg(long, value_enum, default_value_t = Format::Text)]
     format: Format,
+
+    /// Terms for hotword biasing, one `term :boost` per line
+    /// (docs/vocabulary.md). With no vocabulary file, auris decodes plainly.
+    #[arg(long, value_name = "FILE")]
+    vocabulary_file: Option<PathBuf>,
 
     /// Fail rather than fetch a missing model on a real run
     #[arg(long)]
@@ -296,6 +302,40 @@ fn run(args: Args) -> i32 {
         return INTERRUPTED;
     }
 
+    // Parsed and validated before the ~4 s model load, so a bad
+    // --vocabulary-file fails fast (README "`--vocabulary-file`",
+    // docs/vocabulary.md "Validation"). The cap warning is a diagnostic, not
+    // progress, so it goes to stderr unconditionally, not just under
+    // `verbose` (CLAUDE.md "stderr").
+    let vocabulary = match &args.vocabulary_file {
+        Some(path) => match Vocabulary::load(path) {
+            Ok(v) => {
+                if v.terms_dropped > 0 {
+                    eprintln!(
+                        "auris: vocabulary file exceeds {} terms; dropped {} in file order",
+                        crate::vocabulary::MAX_TERMS,
+                        v.terms_dropped
+                    );
+                }
+                // A vocabulary with no terms (an empty file, or one that's
+                // only comments and blank lines) means exactly what no
+                // vocabulary means. Short-circuit here rather than handing
+                // sherpa-onnx a wholly-empty hotwords string — an
+                // unexercised path, not the same as the safely-ignored
+                // empty *segments* an assembled non-empty string can carry.
+                if v.terms.is_empty() { None } else { Some(v) }
+            }
+            Err(e) => {
+                eprintln!("auris: {e}");
+                return USAGE;
+            }
+        },
+        None => None,
+    };
+    if interrupt.load(Ordering::SeqCst) {
+        return INTERRUPTED;
+    }
+
     if verbose {
         eprintln!("auris: loading {}", model_dir.display());
     }
@@ -318,7 +358,11 @@ fn run(args: Args) -> i32 {
     }
 
     let decode_start = Instant::now();
-    let text = match recognizer.decode(&samples) {
+    let text = match &vocabulary {
+        Some(v) => recognizer.decode_with_hotwords(&samples, &v.hotwords_string()),
+        None => recognizer.decode(&samples),
+    };
+    let text = match text {
         Ok(t) => t,
         Err(e) => {
             eprintln!("auris: {e}");
