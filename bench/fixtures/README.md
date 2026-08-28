@@ -39,3 +39,9 @@ returns false and `src/cli.rs:373` is never reached; the exit 1 comes from
 print the same `NOTHING_TRANSCRIBED_MSG` on purpose (`src/cli.rs:31-33`:
 one wording for mesa to match on), which is exactly what made an empty
 decode read as a gate defect from outside the process.
+
+Both sites still print that one message and exit 1 — unchanged, deliberate.
+What changed is that auris now adds a verbose-only stderr detail line at
+each site, so a terminal user (never mesa, which pipes stderr) can tell
+them apart. On this file that line reads "auris: the recognizer ran and
+returned an empty transcript".

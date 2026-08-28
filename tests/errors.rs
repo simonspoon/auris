@@ -238,6 +238,10 @@ fn silence_is_nothing_transcribed() {
     let stderr = assert_single_line_stderr(&out.stderr);
     assert!(stderr.contains("nothing transcribed"));
     assert!(stderr.contains("no speech"));
+    // `--quiet` forces `verbose` false regardless of the terminal, so the
+    // verbose-only detail line must not appear here — this is the guardrail
+    // that mesa (a stderr pipe, not a terminal) never sees it either.
+    assert!(!stderr.contains("silence gate tripped"));
 }
 
 /// `install_interrupt_handler` (`src/cli.rs`) only sets a flag on the first

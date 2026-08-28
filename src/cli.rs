@@ -31,6 +31,13 @@ const INTERRUPTED: i32 = 130;
 /// The one message for "no transcript" — printed whether the energy gate
 /// trips before the recognizer runs or the recognizer itself returns
 /// nothing, so there is a single wording for mesa to match on, not two.
+/// The two paths being indistinguishable from outside the process once cost
+/// an investigation (mesa task 965) that was chasing a gate defect when the
+/// recognizer had in fact run and decoded nothing. The wording and exit code
+/// stay merged deliberately — mesa still needs one thing to match — but
+/// under `verbose`, each site now adds a detail line naming which one fired.
+/// That line is invisible to anything that pipes stderr, which is why it
+/// costs the contract nothing.
 const NOTHING_TRANSCRIBED_MSG: &str = "auris: nothing transcribed; no speech in the audio";
 
 /// The only model auris knows how to fetch today (README "Which model, and
@@ -372,6 +379,9 @@ fn run_transcribe(args: Args) -> i32 {
     // break README "Exit codes"'s exit-1-on-silence contract.
     if audio::is_silent(&samples) {
         eprintln!("{NOTHING_TRANSCRIBED_MSG}");
+        if verbose {
+            eprintln!("auris: silence gate tripped; the recognizer was not run");
+        }
         return NOTHING_TRANSCRIBED;
     }
 
@@ -483,6 +493,9 @@ fn run_transcribe(args: Args) -> i32 {
         // so mesa can tell "you didn't say anything" from a broken install,
         // which a silent exit 1 cannot distinguish.
         eprintln!("{NOTHING_TRANSCRIBED_MSG}");
+        if verbose {
+            eprintln!("auris: the recognizer ran and returned an empty transcript");
+        }
         return NOTHING_TRANSCRIBED;
     }
 
