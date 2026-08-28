@@ -74,6 +74,9 @@ impl RawSampleFormat {
 pub enum AudioError {
     /// The underlying reader failed (a real I/O error, not a size-cap trip).
     Io(std::io::Error),
+    /// The stream yielded zero bytes — distinct from silence (a WAV full of
+    /// zero samples) and from garbage (bytes that just aren't WAV).
+    NoInput,
     /// The first bytes of the stream did not look like WAV. Names the
     /// container it did look like, when recognisable, so the caller isn't
     /// left guessing.
@@ -118,7 +121,11 @@ impl std::fmt::Display for AudioError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             AudioError::Io(e) => write!(f, "failed to read audio: {e}"),
-            AudioError::NotWav(detected) => write!(f, "not a wav file ({detected})"),
+            AudioError::NoInput => write!(f, "input was empty; expected a wav stream"),
+            AudioError::NotWav(detected) => write!(
+                f,
+                "not a wav file ({detected}); expected a wav stream (RIFF/WAVE)"
+            ),
             AudioError::Wav(e) => write!(f, "failed to decode wav: {e}"),
             AudioError::Resample(msg) => write!(f, "failed to resample audio: {msg}"),
             AudioError::TooLarge => write!(
@@ -356,6 +363,9 @@ pub fn decode(reader: impl Read) -> Result<Vec<f32>, AudioError> {
     let mut magic = [0u8; 8];
     let n = fill_as_much_as_possible(&mut limited, &mut magic).map_err(map_io_error)?;
 
+    if n == 0 {
+        return Err(AudioError::NoInput);
+    }
     if n >= 4 && &magic[0..4] == b"RIFF" {
         let chained = Cursor::new(magic[..n].to_vec()).chain(limited);
         decode_wav(chained)
@@ -507,6 +517,13 @@ mod tests {
         let cut = &wav[..wav.len() - 4]; // chop off part of the data chunk
         let result = decode(Cursor::new(cut.to_vec()));
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn empty_input_is_no_input_not_not_wav() {
+        let err = decode(Cursor::new(Vec::<u8>::new())).unwrap_err();
+        assert!(matches!(err, AudioError::NoInput));
+        assert_eq!(err.exit_code(), 1);
     }
 
     #[test]

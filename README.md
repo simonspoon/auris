@@ -269,9 +269,10 @@ is installed yet.
 
 **A real run with the model missing and `--no-download` given exits 1** —
 `NOTHING_TRANSCRIBED`, the same code the exit-code table gives for a run that
-produced no transcript — with `auris: missing <path>` on stderr and a line
-saying how to fetch it, the shape of kokoro-rs's own message
-(`models.rs:93-99`). No daemon is started and no encoder is loaded.
+produced no transcript — with one stderr line naming the model, the path it
+was expected at, and `auris serve` as the way to fetch it, the same shape
+kokoro-rs's own message takes (`models.rs:93-99`). No daemon is started and no
+encoder is loaded.
 
 **Without `--no-download`, a real run fetches what is missing first**, in
 whichever process is about to load the recognizer — `auris serve`, the daemon

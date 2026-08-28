@@ -19,3 +19,4 @@ sherpa-onnx = "=1.13.6"
 
 [dev-dependencies]
 tempfile = "3"
+libc = "0.2"

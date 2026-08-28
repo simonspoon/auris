@@ -338,9 +338,12 @@ fn run_transcribe(args: Args) -> i32 {
                 // Automatic fetching (README "Getting the model") is not
                 // implemented here — it lands with the model-download work
                 // — so a missing default model takes this exit-1 path
-                // regardless of --no-download today.
-                eprintln!("auris: missing {}", path.display());
-                eprintln!("auris: run `auris serve` to fetch it");
+                // regardless of --no-download today: there is no fetch for
+                // the flag to refuse.
+                eprintln!(
+                    "auris: model {DEFAULT_MODEL_NAME} is not installed at {}; run `auris serve` to fetch it",
+                    path.display()
+                );
                 return NOTHING_TRANSCRIBED;
             }
             path
@@ -458,7 +461,10 @@ fn run_transcribe(args: Args) -> i32 {
     let text = text.trim();
     if text.is_empty() {
         // No blank line, no JSON — a run with no transcript writes nothing
-        // to stdout at all (README "stdout").
+        // to stdout at all (README "stdout"). The stderr line still exists
+        // so mesa can tell "you didn't say anything" from a broken install,
+        // which a silent exit 1 cannot distinguish.
+        eprintln!("auris: nothing transcribed; no speech in the audio");
         return NOTHING_TRANSCRIBED;
     }
 
@@ -501,9 +507,9 @@ fn run_serve(args: ServeArgs) -> i32 {
     let model_dir = match source {
         ModelSource::Default(path) => {
             if !model_dir_is_complete(&path) {
-                eprintln!("auris: missing {}", path.display());
                 eprintln!(
-                    "auris: model download is not implemented yet; pass -m with a complete model directory"
+                    "auris: model {DEFAULT_MODEL_NAME} is not installed at {}; model download is not implemented yet, pass -m with a complete model directory",
+                    path.display()
                 );
                 return NOTHING_TRANSCRIBED;
             }
