@@ -1,0 +1,40 @@
+u01	closed cost $924 and
+u02	
+u03	simulator and assign it to me
+u04	hel
+u05	remind me to check the courros latency numbers against whisper before we pick a winner
+u06	I think we need a custom vocabulary list for Mesa terms before we ship can you open a bug for that
+u07	mark
+u08	emulator login
+u09	Khora what's the RT
+u10	cold start is under 4 seconds now
+u11	Mesa love this under task 924 please
+u12	I already checked twice and I even reloaded the vocabulary file to be sure
+u13	I keep mixing those two up
+u14	so I was staring at the RTF numbers for like 20 minutes trying to figure out why characters was so much slower than the warm Benchmark suggested and then I realized the demon had reloaded the model because someone had switched vocabulary files on task 118 which forces a full reload instead of just serving the new list so that's probably what Corona needs fixed before we touch again
+u15	can you check whether the tdt decoder still hangs on silence or did that get fixed with the energy gate
+u16	honey else is fine now
+u17	
+u18	I pushed it an hour ago task 852 is still open and Khora is blocked on the CDP handshake again same as last week
+u19	is
+u20	Helios that keep tripping up the recognizer and honestly I'm not sure which one is worse at this point
+u21	can someone check the mic permissions
+u22	mark
+u23	on anything longer than about 8 Seconds of audio I already filed task 943 but I think it's actually a sharper version
+u24	okay quick one is the demon even
+u25	which is kind of funny actually because they are nowhere near the same word
+u26	wrong project
+u27	okay so I think what's actually happening is when I dictate the really long rambling sentence like this one into mesa's live view the punctuation model just gives up somewhere around the third clause and everything after that turns into one giant run on which is exactly the kind of thing that's going to tank our sentence boundary F1 if we don't fix it
+u28	it is empty nothing to transcribe
+u29	15 second load time just to hear a demo
+u30	from yesterday's TR
+u31	is the demon of Icon tell from here check
+u32	the
+u33	or dropped every week socket frame during the recording I checked the console and there's nothing useful and it will need to reproduce it live before filing anything
+u34	last week maybe I'm thinking of a different branch
+u35	always is still misery I've tried the vocabulary list twice it's not fixing it
+u36	once the build finishes
+u37	
+u38	should be able to switch over without a config change I still want to run the app test overnight before we flip the default worst case we just roll it back in the morning
+u39	ours
+u40	cool Vixens on the new simulator against the accessibility tree instead seems stable now

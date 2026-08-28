@@ -139,9 +139,13 @@ def wait_for_devtools(port, timeout=15.0):
 
 
 def open_tab(port, url):
-    with urllib.request.urlopen(
-        f"http://127.0.0.1:{port}/json/new?{url}", timeout=5
-    ) as resp:
+    # Chrome 111+ rejects GET on /json/new ("Using unsafe HTTP verb GET to
+    # invoke /json/new. This action supports only PUT verb.") -- PUT with an
+    # empty body is required.
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{port}/json/new?{url}", method="PUT"
+    )
+    with urllib.request.urlopen(req, timeout=5) as resp:
         target = json.loads(resp.read())
     return target["webSocketDebuggerUrl"]
 
@@ -270,7 +274,8 @@ def main():
     parser.add_argument("--out", required=True, help="output TSV: id<TAB>transcript")
     parser.add_argument(
         "--diagnostics-out", default=None,
-        help="output TSV: id<TAB>micRMSpeak (default: <out dir>/webspeech-diagnostics.tsv)",
+        help="output TSV: id<TAB>micRMSpeak<TAB>wsError<TAB>wsInterim "
+        "(default: <out dir>/webspeech-diagnostics.tsv)",
     )
     parser.add_argument(
         "--mode", choices=["loopback", "acoustic"], default="loopback",
@@ -403,6 +408,10 @@ def main():
             print("auris: capture.html never became ready (window.__wsReady)", file=sys.stderr)
             return 1
 
+        id_mismatches = []
+        poll_timeouts = []
+        prev_stale_count = 0
+
         with open(out_path, "w", encoding="utf-8") as out_f, \
              open(diagnostics_path, "w", encoding="utf-8") as diag_f:
             for i, (utt_id, _text) in enumerate(corpus):
@@ -411,8 +420,14 @@ def main():
                     print(f"auris: missing wav for {utt_id}: {wav_path}", file=sys.stderr)
                     return 2
 
-                cdp.evaluate("window.__wsReset()")
-                time.sleep(0.3)  # let onend/restart settle before playing
+                # Builds a brand-new SpeechRecognition object for this
+                # utterance rather than resetting a shared one in place --
+                # see window.__wsStartUtterance in capture.html for why
+                # reusing one recognizer across utterances let a late
+                # finalization from utterance N bleed into utterance N+1's
+                # results.
+                cdp.evaluate(f"window.__wsStartUtterance({json.dumps(utt_id)})")
+                time.sleep(0.3)  # let the fresh recognizer's onstart settle before playing
 
                 if args.mode == "loopback":
                     play_wav(args.ffmpeg_bin, wav_path, args.device)
@@ -432,11 +447,69 @@ def main():
                     finally:
                         time.sleep(0.5)
                         stop_mic_recording(recorder)
-                time.sleep(args.settle_margin)
+
+                # Force Chrome to finalize whatever it has captured so far --
+                # see the comment on window.__wsStop in capture.html.
+                cdp.evaluate("window.__wsStop()")
+
+                # Bounded poll for onend instead of a blind sleep: if Chrome
+                # finalizes and ends promptly, don't waste the rest of the
+                # settle margin waiting. onend is not guaranteed to ever fire
+                # (measured directly -- 10s of polling with no result), so
+                # this is capped and falls back to the fixed settle margin
+                # rather than polling indefinitely.
+                poll_deadline = time.time() + 5.0
+                ended = False
+                while time.time() < poll_deadline:
+                    if cdp.evaluate("window.__wsEnded === true"):
+                        ended = True
+                        break
+                    time.sleep(0.1)
+                if not ended:
+                    poll_timeouts.append(utt_id)
+                    print(
+                        f"auris: {utt_id}: window.__wsEnded poll timed out after 5s, "
+                        "falling back to settle margin",
+                        file=sys.stderr,
+                    )
+                    time.sleep(args.settle_margin)
 
                 mic_rms = cdp.evaluate("window.__micRMS") or 0
                 final = cdp.evaluate("window.__wsFinal") or []
                 transcript = " ".join(final).strip()
+                # capture.html already tracks these (onerror / onresult's
+                # non-final branch) but nothing previously read them back --
+                # an empty transcript with no reason is not evidence. Read
+                # them so a no-speech/aborted/network/audio-capture error, or
+                # interim text the recognizer never finalized, is visible
+                # instead of silently indistinguishable from "heard nothing".
+                ws_error = cdp.evaluate("window.__wsError")
+                ws_interim = cdp.evaluate("window.__wsInterim") or ""
+
+                # Belt and braces: confirm the page's active recognizer is
+                # still the one built for this utterance id. Structurally it
+                # always should be (window.__wsStartUtterance is the only
+                # thing that changes window.__wsCurrentId, and we just called
+                # it for this exact id above) -- but if this assertion ever
+                # fires, that's a real bug worth surfacing, not swallowing.
+                current_id = cdp.evaluate("window.__wsCurrentId")
+                if current_id != utt_id:
+                    id_mismatches.append((utt_id, current_id))
+                    print(
+                        f"auris: id mismatch for {utt_id}: page reports "
+                        f"window.__wsCurrentId={current_id!r}",
+                        file=sys.stderr,
+                    )
+
+                stale_count = cdp.evaluate("window.__wsStaleResultCount") or 0
+                new_stale = stale_count - prev_stale_count
+                prev_stale_count = stale_count
+                if new_stale:
+                    print(
+                        f"auris: {utt_id}: {new_stale} stale result(s) from a "
+                        "discarded recognizer were discarded (did not affect this row)",
+                        file=sys.stderr,
+                    )
 
                 if i == 0 and mic_rms == 0:
                     if args.mode == "loopback":
@@ -460,10 +533,26 @@ def main():
 
                 out_f.write(f"{utt_id}\t{transcript}\n")
                 out_f.flush()
-                diag_f.write(f"{utt_id}\t{mic_rms}\n")
+                diag_f.write(f"{utt_id}\t{mic_rms}\t{ws_error or ''}\t{ws_interim}\n")
                 diag_f.flush()
-                print(f">>> {utt_id}: rms={mic_rms:.4f} transcript={transcript!r}", file=sys.stderr)
+                print(
+                    f">>> {utt_id}: rms={mic_rms:.4f} transcript={transcript!r} "
+                    f"error={ws_error!r} interim={ws_interim!r}",
+                    file=sys.stderr,
+                )
 
+                # Let the mic's automatic gain control settle back down
+                # between utterances -- measured drifting upward over a long
+                # continuous acoustic-mode session and saturating in the back
+                # third of a 40-utterance run without this pause.
+                time.sleep(2.0)
+
+        print(
+            f"auris: done -- {len(poll_timeouts)} wsEnded poll timeout(s): {poll_timeouts}; "
+            f"{len(id_mismatches)} id mismatch(es): {id_mismatches}; "
+            f"{prev_stale_count} total stale result(s) discarded",
+            file=sys.stderr,
+        )
         return 0
     finally:
         if cdp is not None:

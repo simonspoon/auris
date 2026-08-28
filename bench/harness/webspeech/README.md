@@ -6,10 +6,10 @@
 corpus, so auris has a baseline other than itself to be measured against.
 
 That should be simple -- feed each corpus WAV to Chrome, read back the
-transcript -- and it is not, for two measured reasons below. Read them
-before touching the flags in `capture.py`; both cost real time to find on
-this machine (Google Chrome 151.0.7922.174, macOS Darwin 25.5.0) and are
-easy to silently re-break.
+transcript -- and it is not, for the measured reasons below. Read them
+before touching the flags or the session handling in `capture.py`; each one
+cost real time to find on this machine (Google Chrome 151.0.7922.174, macOS
+Darwin 25.5.0) and is easy to silently re-break.
 
 ## Two modes, and the trade-off between them
 
@@ -133,6 +133,27 @@ list, which never goes through a shell, so this can't bite there -- but it
 will bite if you ever copy this flag into a shell script or a manual
 terminal invocation.
 
+## Finding 3: `/json/new` requires PUT, not GET (Chrome 111+)
+
+`capture.py` opens its tab by hitting Chrome's CDP HTTP endpoint,
+`/json/new`. On Chrome 151.0.7922.174 a plain GET to that endpoint fails
+outright:
+
+```
+HTTP Error 405: Method Not Allowed
+Using unsafe HTTP verb GET to invoke /json/new. This action supports only PUT verb.
+```
+
+confirmed by hand with `curl` against a manually-launched Chrome on a
+scratch port (GET -> 405 with that exact body; PUT -> 200 with the tab's
+`webSocketDebuggerUrl`). Chrome tightened this starting with 111 as a CSRF
+hardening measure; GET used to work. `capture.py`'s `open_tab()` sends a
+`urllib.request.Request(..., method="PUT")`, not the bare `urlopen()` GET
+that older references (including earlier versions of this script) use --
+recorded here so nobody burns time rediscovering it against a fresh Chrome
+install, the way finding 1's flag set and finding 2's fake-device result
+were recorded for the same reason.
+
 ## The diagnostic meter
 
 Because of finding 2, "Web Speech got every word wrong" and "Web Speech
@@ -177,8 +198,23 @@ No driver install, but read this before running it:
 - Stay quiet and don't make noise near the mic while it runs; any sound
   other than the played-back utterance becomes noise in the recording.
 - `--mic-device` is the `ffmpeg -f avfoundation` index for the built-in
-  mic -- list devices with
-  `ffmpeg -f avfoundation -list_devices true -i ""`.
+  mic. **These indices are machine-specific and not stable across
+  machines, or even across reboots/reconnects on the same one** -- do not
+  copy a number from this doc as if it were a constant. Always run
+  `ffmpeg -f avfoundation -list_devices true -i ""` yourself and read the
+  built-in mic's own index off that output. On the machine this harness was
+  developed on, the list looked like:
+  ```
+  [0] Immersed
+  [1] MacBook Pro Microphone
+  [2] Simon's iPhone Microphone
+  [3] Microsoft Teams Audio
+  [4] Hillbilly Microphone
+  ```
+  i.e. index 0 was a *virtual* device (a screen-share/remote-collab tool),
+  not the built-in mic, which was at index 1 -- given as an example of why
+  guessing "0 is probably the built-in mic" is wrong often enough to be
+  dangerous, not as a rule to hard-code instead.
 - The recorded room audio for each utterance lands in
   `bench/results/acoustic-wav/<id>.wav` (override with
   `--acoustic-out-dir`). Rescore auris against that directory, not
@@ -196,12 +232,15 @@ python3 bench/harness/webspeech/capture.py \
   --out bench/results/webspeech-raw.tsv \
   --device "BlackHole 2ch"
 
-# acoustic mode -- no install, plays audio aloud and records the mic
+# acoustic mode -- no install, plays audio aloud and records the mic.
+# --mic-device is whatever YOUR `ffmpeg -f avfoundation -list_devices true
+# -i ""` reports for the built-in mic -- see "Acoustic mode: what to
+# expect" above for why 0 is not a safe assumption.
 python3 bench/harness/webspeech/capture.py \
   --corpus bench/corpus/utterances.tsv \
   --wav-dir bench/corpus/wav \
   --out bench/results/webspeech-acoustic-raw.tsv \
-  --mode acoustic --mic-device 0
+  --mode acoustic --mic-device <your built-in mic's index>
 
 # spot-check two utterances before committing to the full 40-utterance corpus,
 # either mode:
@@ -218,9 +257,16 @@ output side (an index or a name works with recent ffmpeg). Output:
 
 - `--out` (`id<TAB>transcript`) -- one row per utterance, final results
   only, joined.
-- `--diagnostics-out` (`id<TAB>micRMSpeak`, default
-  `bench/results/webspeech-diagnostics.tsv`) -- so a silent run is visible
-  as data, not just inferred from a bad score.
+- `--diagnostics-out` (`id<TAB>micRMSpeak<TAB>wsError<TAB>wsInterim`,
+  default `bench/results/webspeech-diagnostics.tsv`) -- so a silent or empty
+  row is visible as data, not just inferred from a bad score. `wsError` is
+  `webkitSpeechRecognition`'s own `onerror` event (`no-speech`, `network`,
+  `aborted`, `audio-capture`, ...) if one fired for that utterance, empty
+  otherwise -- an empty transcript *with a recorded reason* is evidence; an
+  empty transcript with no reason is not. `wsInterim` is the last
+  non-final result the recognizer produced for that utterance -- see
+  "Finalization is nondeterministic" below for why this column exists and
+  what it's for.
 - Acoustic mode only: `--acoustic-out-dir` (default
   `bench/results/acoustic-wav/`) -- the re-recorded room audio, one wav per
   utterance, for rescoring auris against.
@@ -228,6 +274,118 @@ output side (an index or a name works with recent ffmpeg). Output:
 Score a transcript the same way `run_auris.sh` scores auris's own
 transcripts, with
 `bench/harness/score.py bench/corpus/utterances.tsv <transcript.tsv>`.
+
+## A throwaway warm-up utterance, played first and discarded
+
+Utterance #1 of a fresh browser session is systematically worse than the
+utterances that follow it -- observed in every single capture session run
+against this corpus, acoustic and otherwise: the first utterance either
+came back completely empty or visibly more garbled than its neighbors,
+regardless of which specific sentence happened to be first. This isn't
+specific to any one corpus utterance -- it reproduced with a `say`-generated
+control sentence ("the quick brown fox jumps over the lazy dog") standing
+in as utterance #1 too.
+
+`bench/harness/run_auris.sh` already discards warm-up calls before
+measuring latency for the same kind of reason (the first inference in a
+process eats a one-time cost that isn't representative of steady-state
+behavior); treating a browser session's first recognition the same way is
+consistent with that established method, not special pleading for Web
+Speech. Play one throwaway utterance before the real corpus, in the same
+browser session, and discard its result -- don't count it in the delivered
+transcript or diagnostics files, and record what was used as the warm-up
+in whatever report cites the numbers.
+
+## Finalization is nondeterministic
+
+`webkitSpeechRecognition` promotes a result from interim (`isFinal: false`)
+to final only when it decides to, and calling `recognition.stop()` --
+which forces whatever audio has been captured so far to be returned -- does
+not reliably make that happen promptly, or at all. Measured directly: a
+control sentence ("please open the settings window and turn on dark mode")
+produced `window.__wsInterim` equal to the sentence *word for word*, while
+`window.__wsFinal` stayed empty through the normal settle margin and
+through an extended 10-second poll on `window.__wsEnded` -- `onend` never
+fired, and the correct text simply sat in `wsInterim` forever, still
+correct, never promoted. On a different run of the identical clip, the same
+text finalized promptly. Nothing about the audio, the mic signal, or the
+recognizer's own judgment of what was said changed between these two
+outcomes -- only whether Chrome chose to commit the result.
+
+This means `--out`'s documented contract (final results only, one row per
+utterance) will under-report Web Speech's actual transcription quality on
+some fraction of utterances: the recognizer heard and transcribed correctly,
+but the harness, faithfully recording only what Chrome committed, shows
+nothing. `--out` stays final-only regardless -- that is the correct
+behavior for a harness whose job is to record what actually happened, and
+it also happens to match what an end user of Web Speech would ever see
+rendered, since interim results are provisional by spec and no real product
+treats them as committed output. The `wsInterim` diagnostics column exists
+specifically so that a *second*, best-effort number can be derived after
+the fact (final if present, else the last interim reading, else empty)
+without changing `--out`'s semantics -- run something like:
+
+```python
+# best-effort transcript = final if capture.py recorded one, else the last
+# interim reading from the diagnostics file, else empty. Built from --out
+# and --diagnostics-out; does not touch either file's own contract.
+```
+
+Report both numbers when comparing to auris: best-effort as the headline
+(the strongest case for the baseline -- if auris still wins against it, the
+win isn't an artifact of Chrome's finalization luck) and strict finals-only
+alongside as the conservative bound (what a real Web Speech integration
+would actually render). The gap between the two is itself a finding about
+this harness, not noise to average away.
+
+## Cross-utterance bleed, and the fresh-recognizer-per-utterance fix
+
+A single long-lived `SpeechRecognition` object, reused across utterances by
+resetting it in place, has a failure mode worse than an empty result: a
+late finalization from utterance N can land in the results array utterance
+N+1 is reading, because nothing stops it from arriving after N+1 has
+already started. Observed directly in a run of this harness: utterance
+u30's own final result never arrived by the time its row was read (empty),
+and utterance u31's recorded transcript opened with `"Maya food"` --
+u30's leftover, mis-heard interim text -- immediately followed by u31's own
+correctly-transcribed content. u30's real words were never lost; they
+arrived late and were filed under the wrong id.
+
+This corrupts the attribution of *two* rows, not one: u30 looks like it
+under-transcribed (its real trailing words are missing from its own row),
+and u31 is now scored against a reference it doesn't match at the start,
+which name-accuracy and WER will both charge to the wrong utterance. Given
+finding 2 above (finalization timing cannot be trusted), no settle margin
+or polling delay can be sized to reliably prevent this -- the fix has to be
+structural, not timing-based.
+
+`capture.html`'s `window.__wsStartUtterance(id)` builds a brand-new
+`SpeechRecognition` object for every utterance and discards the previous
+one (`recognition.abort()`) rather than resetting it in place. Every
+handler on a given recognizer closes over the generation it was built
+under and refuses to touch `window.__wsFinal`/`__wsInterim`/`__wsError` if
+a newer generation now exists (tracked in `window.__wsStaleResultCount`, so
+a discarded instance's late arrival is counted rather than silently
+dropped or silently accepted). A stale instance's late final then has
+nowhere to land, no matter how late it arrives or whether it arrives at
+all -- the bleed is structurally impossible, not merely unlikely.
+`capture.py` also bounded-polls `window.__wsEnded === true` (capped at 5s,
+falling back to the fixed settle margin on timeout, with every timeout
+logged) so a fast finalization doesn't waste the rest of the margin, and
+asserts `window.__wsCurrentId` matches the utterance it just started before
+accepting a row, logging any mismatch rather than accepting it silently.
+
+`bench/harness/detect_bleed.py` is a mechanical, after-the-fact check for
+this specific pathology: for each utterance it compares how well the
+recorded transcript's opening words match its *own* reference against how
+well they match the *tail* of the previous utterance's reference, and flags
+ids that look more like they're continuing the previous utterance than
+starting their own. Run it against any transcript this harness produces --
+`python3 bench/harness/detect_bleed.py bench/corpus/utterances.tsv
+<transcript.tsv>` -- and run `--selftest` first if it's been a while, since
+a detector that has never fired on real data is indistinguishable from one
+that cannot fire; `--selftest` plants a known synthetic bleed and asserts
+the script actually catches it.
 
 ## The three-column comparison: Web Speech, Web Speech corrected, auris
 

@@ -9,11 +9,11 @@
   Capture page for a Web Speech baseline against the bench/corpus fixtures.
 
   Driven by capture.py over CDP -- this page never runs unattended. For each
-  utterance the driver calls window.__wsReset(), plays the utterance's WAV
-  into the system default audio input (see README.md for why that has to be
-  an OS-level loopback, not getUserMedia's fake device), then polls
-  window.__wsFinal until the audio has had time to finish and the recognizer
-  has had time to settle.
+  utterance the driver calls window.__wsStartUtterance(id), plays the
+  utterance's WAV into the system default audio input (see README.md for why
+  that has to be an OS-level loopback, not getUserMedia's fake device), then
+  polls window.__wsFinal until the audio has had time to finish and the
+  recognizer has had time to settle.
 
   Two recognizers run in this one page, on purpose:
 
@@ -36,22 +36,40 @@ window.__wsError = null;
 window.__wsStarted = false;
 window.__wsEnded = false;
 window.__micRMS = 0;
+window.__wsCurrentId = null;
+window.__wsStaleResultCount = 0;
 
 let recognition = null;
+// Bumped every time a fresh recognizer is built for a new utterance. Each
+// recognizer's handlers close over the generation they were built under and
+// refuse to touch window.__ws* state once a newer generation exists -- see
+// __wsStartUtterance below for why this is the actual fix, not the previous
+// timing-based one.
+let recognitionGeneration = 0;
 
-function startRecognition() {
+function buildRecognition(myGeneration) {
   const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
-  recognition = new SpeechRecognition();
-  recognition.continuous = true;
-  recognition.interimResults = true;
-  recognition.lang = "en-US";
+  const rec = new SpeechRecognition();
+  rec.continuous = true;
+  rec.interimResults = true;
+  rec.lang = "en-US";
 
-  recognition.onstart = () => {
+  rec.onstart = () => {
+    if (myGeneration !== recognitionGeneration) return; // discarded instance
     window.__wsStarted = true;
     window.__wsEnded = false;
   };
 
-  recognition.onresult = (event) => {
+  rec.onresult = (event) => {
+    if (myGeneration !== recognitionGeneration) {
+      // A discarded recognizer's late result -- exactly the mechanism that
+      // let utterance N's leftover text bleed into utterance N+1's row
+      // (window.__wsFinal is now generation-guarded so this can never write
+      // into the current utterance's results). Counted, not silently
+      // dropped, so capture.py can report how often it happened.
+      window.__wsStaleResultCount++;
+      return;
+    }
     let interim = "";
     for (let i = event.resultIndex; i < event.results.length; i++) {
       const transcript = event.results[i][0].transcript;
@@ -64,50 +82,61 @@ function startRecognition() {
     window.__wsInterim = interim;
   };
 
-  recognition.onerror = (event) => {
+  rec.onerror = (event) => {
+    if (myGeneration !== recognitionGeneration) return;
     window.__wsError = event.error;
   };
 
-  recognition.onend = () => {
-    // Chrome ends a recognition session after a stretch of silence even
-    // with continuous=true. A 40-utterance run has silence between every
-    // utterance, so restarting here is required, not defensive -- without
-    // it only the first utterance would ever be captured.
+  rec.onend = () => {
+    if (myGeneration !== recognitionGeneration) return; // discarded instance
     window.__wsEnded = true;
-    if (!window.__wsResetting) {
-      try {
-        recognition.start();
-      } catch (e) {
-        // start() throws if called while already starting; onend will
-        // fire again shortly and retry.
-      }
-    }
   };
 
-  recognition.start();
+  return rec;
 }
 
-// Called by capture.py between utterances. Clears the transcript arrays and
-// restarts recognition from a clean slate, so one browser session -- one
-// model load, one set of permission grants -- can capture the whole corpus
-// instead of a fresh page per utterance.
-window.__wsReset = function () {
-  window.__wsResetting = true;
-  window.__wsFinal = [];
-  window.__wsInterim = "";
-  window.__wsError = null;
-  window.__wsStarted = false;
-  window.__wsEnded = false;
-  window.__micRMS = 0;
+// Called by capture.py right after an utterance's playback ends, before it
+// reads window.__wsFinal. Chrome does not finalize a pending result on its
+// own with continuous=true unless it independently decides speech ended --
+// recognition.stop() is what forces the audio captured so far to be
+// returned as a final onresult event.
+window.__wsStop = function () {
   try {
     if (recognition) recognition.stop();
   } catch (e) {
     // ignore -- may already be stopped
   }
-  setTimeout(() => {
-    window.__wsResetting = false;
-    startRecognition();
-  }, 200);
+};
+
+// Called by capture.py at the START of every utterance, including the
+// first. Builds and starts a brand-new SpeechRecognition object rather than
+// reusing/reset()-ing the previous one: reusing one long-lived recognizer
+// across utterances is what let a late finalization from utterance N land in
+// the results array utterance N+1 was reading (onend does not reliably fire
+// at all -- see docs/README's finding on stop() unreliability -- so no
+// timing margin can be trusted to catch it in time). Discarding the old
+// recognizer outright, with its handlers generation-guarded above, makes
+// that bleed structurally impossible: a stale instance's late final has
+// nowhere to land no matter when or whether it arrives.
+window.__wsStartUtterance = function (utteranceId) {
+  if (recognition) {
+    try { recognition.abort(); } catch (e) {}
+  }
+  recognitionGeneration++;
+  window.__wsCurrentId = utteranceId;
+  window.__wsFinal = [];
+  window.__wsInterim = "";
+  window.__wsError = null;
+  window.__wsStarted = false;
+  window.__wsEnded = false;
+  // The mic RMS meter (startMicMeter below) is a running max that never
+  // resets itself -- __wsReset() used to zero it every utterance; that reset
+  // was dropped when this function replaced __wsReset() and needs to be
+  // done here instead, or every utterance's RMS reading is just the loudest
+  // peak seen since the page loaded, not this utterance's own peak.
+  window.__micRMS = 0;
+  recognition = buildRecognition(recognitionGeneration);
+  recognition.start();
 };
 
 // Diagnostic meter: reads getUserMedia's own stream, independent of
@@ -134,7 +163,8 @@ async function startMicMeter() {
   tick();
 }
 
-startRecognition();
+// No recognition is started here -- capture.py calls window.__wsStartUtterance(id)
+// for every utterance, including the first, once window.__wsReady is true.
 startMicMeter()
   .then(() => { window.__wsReady = true; })
   .catch((e) => { window.__wsError = "mic-meter: " + e.message; window.__wsReady = true; });

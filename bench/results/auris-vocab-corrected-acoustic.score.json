@@ -1,0 +1,1237 @@
+{
+  "wer": 0.10805300713557595,
+  "sub": 59,
+  "del": 39,
+  "ins": 8,
+  "ref_words": 981,
+  "name_accuracy": 0.7906976744186047,
+  "name_f1": 0.7906976744186047,
+  "name_precision": 0.9444444444444444,
+  "name_recall": 0.68,
+  "name_total": 50,
+  "name_correct": 34,
+  "name_hyp_total": 36,
+  "name_hits": 34,
+  "name_missed": 16,
+  "name_false_pos": 2,
+  "per_term": {
+    "mesa": {
+      "ref": 8,
+      "hyp": 9,
+      "correct": 8,
+      "precision": 0.8888888888888888,
+      "recall": 1.0,
+      "f1": 0.9411764705882353,
+      "accuracy": 0.9411764705882353
+    },
+    "auris": {
+      "ref": 9,
+      "hyp": 6,
+      "correct": 6,
+      "precision": 1.0,
+      "recall": 0.6666666666666666,
+      "f1": 0.8,
+      "accuracy": 0.8
+    },
+    "khora": {
+      "ref": 16,
+      "hyp": 9,
+      "correct": 9,
+      "precision": 1.0,
+      "recall": 0.5625,
+      "f1": 0.72,
+      "accuracy": 0.72
+    },
+    "qorvex": {
+      "ref": 6,
+      "hyp": 4,
+      "correct": 4,
+      "precision": 1.0,
+      "recall": 0.6666666666666666,
+      "f1": 0.8,
+      "accuracy": 0.8
+    },
+    "helios": {
+      "ref": 6,
+      "hyp": 5,
+      "correct": 4,
+      "precision": 0.8,
+      "recall": 0.6666666666666666,
+      "f1": 0.7272727272727272,
+      "accuracy": 0.7272727272727272
+    },
+    "kokoro": {
+      "ref": 5,
+      "hyp": 3,
+      "correct": 3,
+      "precision": 1.0,
+      "recall": 0.6,
+      "f1": 0.7499999999999999,
+      "accuracy": 0.7499999999999999
+    }
+  },
+  "punct_boundary_precision": 0.8,
+  "punct_boundary_recall": 0.41379310344827586,
+  "punct_boundary_f1": 0.5454545454545454,
+  "tp": 12,
+  "fp": 3,
+  "fn": 17,
+  "ref_boundaries": 29,
+  "hyp_boundaries": 15,
+  "any_terminal_punct_rate": 0.875,
+  "comma_count_ref": 39,
+  "comma_count_hyp": 44,
+  "per_utterance": {
+    "u01": {
+      "id": "u01",
+      "ref": "close task 924 and open a follow up under auris for the parakeet spike",
+      "hyp": "Close task 924 and open a follow-up under auris for the parakeet spike.",
+      "wer": 0.0,
+      "sub": 0,
+      "del": 0,
+      "ins": 0,
+      "ref_words": 16,
+      "name_total": 1,
+      "name_correct": 1,
+      "name_hyp_total": 1,
+      "name_false_pos": 0,
+      "vocab_terms": [
+        {
+          "term": "auris",
+          "hit": true
+        }
+      ],
+      "punct_tp": 0,
+      "punct_fp": 0,
+      "punct_fn": 0,
+      "ref_boundaries": 0,
+      "hyp_boundaries": 0,
+      "hyp_has_terminal_punct": true,
+      "comma_ref": 0,
+      "comma_hyp": 0
+    },
+    "u02": {
+      "id": "u02",
+      "ref": "hey mesa add a note to khora that headless mode is the default now",
+      "hyp": "Hey mesa add a note to khora that headless mode is the default now.",
+      "wer": 0.0,
+      "sub": 0,
+      "del": 0,
+      "ins": 0,
+      "ref_words": 14,
+      "name_total": 2,
+      "name_correct": 2,
+      "name_hyp_total": 2,
+      "name_false_pos": 0,
+      "vocab_terms": [
+        {
+          "term": "mesa",
+          "hit": true
+        },
+        {
+          "term": "khora",
+          "hit": true
+        }
+      ],
+      "punct_tp": 0,
+      "punct_fp": 0,
+      "punct_fn": 0,
+      "ref_boundaries": 0,
+      "hyp_boundaries": 0,
+      "hyp_has_terminal_punct": true,
+      "comma_ref": 0,
+      "comma_hyp": 0
+    },
+    "u03": {
+      "id": "u03",
+      "ref": "create a task in mesa called wire up qorvex to the ios simulator and assign it to me",
+      "hyp": "Create a task in mesa called qorvex to the iOS simulator and assign it to me.",
+      "wer": 0.1111111111111111,
+      "sub": 0,
+      "del": 2,
+      "ins": 0,
+      "ref_words": 18,
+      "name_total": 2,
+      "name_correct": 2,
+      "name_hyp_total": 2,
+      "name_false_pos": 0,
+      "vocab_terms": [
+        {
+          "term": "mesa",
+          "hit": true
+        },
+        {
+          "term": "qorvex",
+          "hit": true
+        }
+      ],
+      "punct_tp": 0,
+      "punct_fp": 0,
+      "punct_fn": 0,
+      "ref_boundaries": 0,
+      "hyp_boundaries": 0,
+      "hyp_has_terminal_punct": true,
+      "comma_ref": 0,
+      "comma_hyp": 0
+    },
+    "u04": {
+      "id": "u04",
+      "ref": "helios needs an index refresh before task 118 can start",
+      "hyp": "118 can start.",
+      "wer": 0.5833333333333334,
+      "sub": 0,
+      "del": 7,
+      "ins": 0,
+      "ref_words": 12,
+      "name_total": 1,
+      "name_correct": 0,
+      "name_hyp_total": 0,
+      "name_false_pos": 0,
+      "vocab_terms": [
+        {
+          "term": "helios",
+          "hit": false
+        }
+      ],
+      "punct_tp": 0,
+      "punct_fp": 0,
+      "punct_fn": 0,
+      "ref_boundaries": 0,
+      "hyp_boundaries": 0,
+      "hyp_has_terminal_punct": true,
+      "comma_ref": 0,
+      "comma_hyp": 0
+    },
+    "u05": {
+      "id": "u05",
+      "ref": "remind me to check kokoro's latency numbers against whisper before we pick a winner",
+      "hyp": "Remind me to check kokoro's latency numbers against Whisper before we pick a winner.",
+      "wer": 0.0,
+      "sub": 0,
+      "del": 0,
+      "ins": 0,
+      "ref_words": 15,
+      "name_total": 1,
+      "name_correct": 1,
+      "name_hyp_total": 1,
+      "name_false_pos": 0,
+      "vocab_terms": [
+        {
+          "term": "kokoro",
+          "hit": true
+        }
+      ],
+      "punct_tp": 0,
+      "punct_fp": 0,
+      "punct_fn": 0,
+      "ref_boundaries": 0,
+      "hyp_boundaries": 0,
+      "hyp_has_terminal_punct": true,
+      "comma_ref": 0,
+      "comma_hyp": 0
+    },
+    "u06": {
+      "id": "u06",
+      "ref": "so basically what happened is auris transcribed helios as hell EOS again which is the third time this week and I think we need a custom vocabulary list for mesa terms before we ship, can you open a bug for that",
+      "hyp": "So basically, what happened is auris transcribed helios as helios again, which is the third time this week, and I think we need a custom vocabulary list for mesa terms before we ship. Can you open a bug for that?",
+      "wer": 0.04878048780487805,
+      "sub": 1,
+      "del": 1,
+      "ins": 0,
+      "ref_words": 41,
+      "name_total": 3,
+      "name_correct": 3,
+      "name_hyp_total": 4,
+      "name_false_pos": 1,
+      "vocab_terms": [
+        {
+          "term": "auris",
+          "hit": true
+        },
+        {
+          "term": "helios",
+          "hit": true
+        },
+        {
+          "term": "mesa",
+          "hit": true
+        }
+      ],
+      "punct_tp": 0,
+      "punct_fp": 1,
+      "punct_fn": 0,
+      "ref_boundaries": 0,
+      "hyp_boundaries": 1,
+      "hyp_has_terminal_punct": true,
+      "comma_ref": 1,
+      "comma_hyp": 3
+    },
+    "u07": {
+      "id": "u07",
+      "ref": "mark task 730 done and task 731 blocked on khora",
+      "hyp": "mark task 730 done and task 731 blocked on khora.",
+      "wer": 0.0,
+      "sub": 0,
+      "del": 0,
+      "ins": 0,
+      "ref_words": 14,
+      "name_total": 1,
+      "name_correct": 1,
+      "name_hyp_total": 1,
+      "name_false_pos": 0,
+      "vocab_terms": [
+        {
+          "term": "khora",
+          "hit": true
+        }
+      ],
+      "punct_tp": 0,
+      "punct_fp": 0,
+      "punct_fn": 0,
+      "ref_boundaries": 0,
+      "hyp_boundaries": 0,
+      "hyp_has_terminal_punct": true,
+      "comma_ref": 0,
+      "comma_hyp": 0
+    },
+    "u08": {
+      "id": "u08",
+      "ref": "qorvex tap failed twice on the android emulator, log it under auris and link it to task 902",
+      "hyp": "Qorvex tap failed twice on the Android emulator, log it under auris and link it to task 902.",
+      "wer": 0.0,
+      "sub": 0,
+      "del": 0,
+      "ins": 0,
+      "ref_words": 20,
+      "name_total": 2,
+      "name_correct": 2,
+      "name_hyp_total": 2,
+      "name_false_pos": 0,
+      "vocab_terms": [
+        {
+          "term": "qorvex",
+          "hit": true
+        },
+        {
+          "term": "auris",
+          "hit": true
+        }
+      ],
+      "punct_tp": 0,
+      "punct_fp": 0,
+      "punct_fn": 0,
+      "ref_boundaries": 0,
+      "hyp_boundaries": 0,
+      "hyp_has_terminal_punct": true,
+      "comma_ref": 1,
+      "comma_hyp": 1
+    },
+    "u09": {
+      "id": "u09",
+      "ref": "khora, what's the rtf on the warm parakeet run, the one from this morning not last night's?",
+      "hyp": "Khora, what's the RTF on the warm parakeet run, the one from this morning not last night's?",
+      "wer": 0.0,
+      "sub": 0,
+      "del": 0,
+      "ins": 0,
+      "ref_words": 19,
+      "name_total": 1,
+      "name_correct": 1,
+      "name_hyp_total": 1,
+      "name_false_pos": 0,
+      "vocab_terms": [
+        {
+          "term": "khora",
+          "hit": true
+        }
+      ],
+      "punct_tp": 0,
+      "punct_fp": 0,
+      "punct_fn": 0,
+      "ref_boundaries": 0,
+      "hyp_boundaries": 0,
+      "hyp_has_terminal_punct": true,
+      "comma_ref": 2,
+      "comma_hyp": 2
+    },
+    "u10": {
+      "id": "u10",
+      "ref": "the sherpa-onnx build pulled in a new int8 encoder. cold start is under four seconds now.",
+      "hyp": "The Sherpa Onyx bill pulled in a new- 8 encoder called start is under 4 seconds now.",
+      "wer": 0.23529411764705882,
+      "sub": 4,
+      "del": 0,
+      "ins": 0,
+      "ref_words": 17,
+      "name_total": 0,
+      "name_correct": 0,
+      "name_hyp_total": 0,
+      "name_false_pos": 0,
+      "vocab_terms": [],
+      "punct_tp": 0,
+      "punct_fp": 0,
+      "punct_fn": 1,
+      "ref_boundaries": 1,
+      "hyp_boundaries": 0,
+      "hyp_has_terminal_punct": true,
+      "comma_ref": 0,
+      "comma_hyp": 0
+    },
+    "u11": {
+      "id": "u11",
+      "ref": "mesa, log this under task nine two four please",
+      "hyp": "mesa log this under task 924 please",
+      "wer": 0.0,
+      "sub": 0,
+      "del": 0,
+      "ins": 0,
+      "ref_words": 9,
+      "name_total": 1,
+      "name_correct": 1,
+      "name_hyp_total": 1,
+      "name_false_pos": 0,
+      "vocab_terms": [
+        {
+          "term": "mesa",
+          "hit": true
+        }
+      ],
+      "punct_tp": 0,
+      "punct_fp": 0,
+      "punct_fn": 0,
+      "ref_boundaries": 0,
+      "hyp_boundaries": 0,
+      "hyp_has_terminal_punct": false,
+      "comma_ref": 1,
+      "comma_hyp": 0
+    },
+    "u12": {
+      "id": "u12",
+      "ref": "auris keeps dropping the first syllable on khora when i dictate straight into stdin, and it happens every single time, not just occasionally. it's not the daemon, i already checked twice, and i even reloaded the vocabulary file to be sure",
+      "hyp": "Auris keeps dropping the first syllable on khora when I dictate straight into estin, and it happens every single time- not just occasionally- it's not the demon, I already checked twice, and I even reloaded the vocabulary file to be sure.",
+      "wer": 0.047619047619047616,
+      "sub": 2,
+      "del": 0,
+      "ins": 0,
+      "ref_words": 42,
+      "name_total": 2,
+      "name_correct": 2,
+      "name_hyp_total": 2,
+      "name_false_pos": 0,
+      "vocab_terms": [
+        {
+          "term": "auris",
+          "hit": true
+        },
+        {
+          "term": "khora",
+          "hit": true
+        }
+      ],
+      "punct_tp": 0,
+      "punct_fp": 0,
+      "punct_fn": 1,
+      "ref_boundaries": 1,
+      "hyp_boundaries": 0,
+      "hyp_has_terminal_punct": true,
+      "comma_ref": 4,
+      "comma_hyp": 3
+    },
+    "u13": {
+      "id": "u13",
+      "ref": "seven thirty is the one blocking khora integration, not seven eighteen, i keep mixing those two up",
+      "hyp": "not 7 18, I kick mixing those two up.",
+      "wer": 0.5,
+      "sub": 1,
+      "del": 8,
+      "ins": 0,
+      "ref_words": 18,
+      "name_total": 1,
+      "name_correct": 0,
+      "name_hyp_total": 0,
+      "name_false_pos": 0,
+      "vocab_terms": [
+        {
+          "term": "khora",
+          "hit": false
+        }
+      ],
+      "punct_tp": 0,
+      "punct_fp": 0,
+      "punct_fn": 0,
+      "ref_boundaries": 0,
+      "hyp_boundaries": 0,
+      "hyp_has_terminal_punct": true,
+      "comma_ref": 2,
+      "comma_hyp": 1
+    },
+    "u14": {
+      "id": "u14",
+      "ref": "so i was staring at the rtf numbers for like twenty minutes trying to figure out why parakeet was so much slower than the warm benchmark suggested, and then i realized the daemon had reloaded the model because someone had switched vocabulary files on task 118, which forces a full reload instead of just serving the new list, so that's probably what khora needs fixed before we touch qorvex again",
+      "hyp": "So I was staring at the RTF numbers for like 20 minutes trying to figure out why Parakeet was so much slower than the worm benchmark suggested, and then I realized the demon had reloaded the model because someone had switched vocabulary files on task 118, which forces a full reload instead of just serving the new list, so that's probably what Qorra needs fixed before we touch kov q",
+      "wer": 0.06756756756756757,
+      "sub": 5,
+      "del": 0,
+      "ins": 0,
+      "ref_words": 74,
+      "name_total": 2,
+      "name_correct": 0,
+      "name_hyp_total": 0,
+      "name_false_pos": 0,
+      "vocab_terms": [
+        {
+          "term": "khora",
+          "hit": false
+        },
+        {
+          "term": "qorvex",
+          "hit": false
+        }
+      ],
+      "punct_tp": 0,
+      "punct_fp": 0,
+      "punct_fn": 0,
+      "ref_boundaries": 0,
+      "hyp_boundaries": 0,
+      "hyp_has_terminal_punct": false,
+      "comma_ref": 3,
+      "comma_hyp": 3
+    },
+    "u15": {
+      "id": "u15",
+      "ref": "can you check whether the tdt decoder still hangs on silence, or did that get fixed with the energy gate?",
+      "hyp": "Can you check whether the TDT decoder still hangs on silence, or did that get fixed with the energy gate?",
+      "wer": 0.0,
+      "sub": 0,
+      "del": 0,
+      "ins": 0,
+      "ref_words": 20,
+      "name_total": 0,
+      "name_correct": 0,
+      "name_hyp_total": 0,
+      "name_false_pos": 0,
+      "vocab_terms": [],
+      "punct_tp": 0,
+      "punct_fp": 0,
+      "punct_fn": 0,
+      "ref_boundaries": 0,
+      "hyp_boundaries": 0,
+      "hyp_has_terminal_punct": true,
+      "comma_ref": 1,
+      "comma_hyp": 1
+    },
+    "u16": {
+      "id": "u16",
+      "ref": "helios is fine now",
+      "hyp": "Hermios is fine now.",
+      "wer": 0.25,
+      "sub": 1,
+      "del": 0,
+      "ins": 0,
+      "ref_words": 4,
+      "name_total": 1,
+      "name_correct": 0,
+      "name_hyp_total": 0,
+      "name_false_pos": 0,
+      "vocab_terms": [
+        {
+          "term": "helios",
+          "hit": false
+        }
+      ],
+      "punct_tp": 0,
+      "punct_fp": 0,
+      "punct_fn": 0,
+      "ref_boundaries": 0,
+      "hyp_boundaries": 0,
+      "hyp_has_terminal_punct": true,
+      "comma_ref": 0,
+      "comma_hyp": 0
+    },
+    "u17": {
+      "id": "u17",
+      "ref": "kokoro's wer dropped two points after the correction pass. that's a real improvement",
+      "hyp": "past that's a real improvement.",
+      "wer": 0.6666666666666666,
+      "sub": 1,
+      "del": 9,
+      "ins": 0,
+      "ref_words": 15,
+      "name_total": 1,
+      "name_correct": 0,
+      "name_hyp_total": 0,
+      "name_false_pos": 0,
+      "vocab_terms": [
+        {
+          "term": "kokoro",
+          "hit": false
+        }
+      ],
+      "punct_tp": 0,
+      "punct_fp": 0,
+      "punct_fn": 1,
+      "ref_boundaries": 1,
+      "hyp_boundaries": 0,
+      "hyp_has_terminal_punct": true,
+      "comma_ref": 0,
+      "comma_hyp": 0
+    },
+    "u18": {
+      "id": "u18",
+      "ref": "task 851 is done, i pushed it an hour ago. task 852 is still open, and khora is blocked on the cdp handshake again, same as last week",
+      "hyp": "Task 851 is done, I pushed it an hour ago. Task 852 is still open, and qor is blocked on the CDP handshake again, same as last week.",
+      "wer": 0.03125,
+      "sub": 1,
+      "del": 0,
+      "ins": 0,
+      "ref_words": 32,
+      "name_total": 1,
+      "name_correct": 0,
+      "name_hyp_total": 0,
+      "name_false_pos": 0,
+      "vocab_terms": [
+        {
+          "term": "khora",
+          "hit": false
+        }
+      ],
+      "punct_tp": 1,
+      "punct_fp": 0,
+      "punct_fn": 0,
+      "ref_boundaries": 1,
+      "hyp_boundaries": 1,
+      "hyp_has_terminal_punct": true,
+      "comma_ref": 3,
+      "comma_hyp": 3
+    },
+    "u19": {
+      "id": "u19",
+      "ref": "is auris even listening right now?",
+      "hyp": "Is auris even listening right now?",
+      "wer": 0.0,
+      "sub": 0,
+      "del": 0,
+      "ins": 0,
+      "ref_words": 6,
+      "name_total": 1,
+      "name_correct": 1,
+      "name_hyp_total": 1,
+      "name_false_pos": 0,
+      "vocab_terms": [
+        {
+          "term": "auris",
+          "hit": true
+        }
+      ],
+      "punct_tp": 0,
+      "punct_fp": 0,
+      "punct_fn": 0,
+      "ref_boundaries": 0,
+      "hyp_boundaries": 0,
+      "hyp_has_terminal_punct": true,
+      "comma_ref": 0,
+      "comma_hyp": 0
+    },
+    "u20": {
+      "id": "u20",
+      "ref": "qorvex, kokoro, and mesa are all fine, nothing to report there. it's just khora and helios that keep tripping up the recognizer, and honestly i'm not sure which one is worse at this point",
+      "hyp": "Qorvex, qoro, and mesa are all fine, nothing to report there, it's just qor and helios that keep tripping up the recognizer, and honestly, I'm not sure which one is worse at this point.",
+      "wer": 0.05555555555555555,
+      "sub": 2,
+      "del": 0,
+      "ins": 0,
+      "ref_words": 36,
+      "name_total": 5,
+      "name_correct": 3,
+      "name_hyp_total": 3,
+      "name_false_pos": 0,
+      "vocab_terms": [
+        {
+          "term": "qorvex",
+          "hit": true
+        },
+        {
+          "term": "kokoro",
+          "hit": false
+        },
+        {
+          "term": "mesa",
+          "hit": true
+        },
+        {
+          "term": "khora",
+          "hit": false
+        },
+        {
+          "term": "helios",
+          "hit": true
+        }
+      ],
+      "punct_tp": 0,
+      "punct_fp": 0,
+      "punct_fn": 1,
+      "ref_boundaries": 1,
+      "hyp_boundaries": 0,
+      "hyp_has_terminal_punct": true,
+      "comma_ref": 4,
+      "comma_hyp": 6
+    },
+    "u21": {
+      "id": "u21",
+      "ref": "avfoundation keeps grabbing the wrong input device on this machine, can someone check the mic permissions?",
+      "hyp": "A foundation kits grabbing the wrong input device on this machine. Can someone check the mic permissions?",
+      "wer": 0.1875,
+      "sub": 2,
+      "del": 0,
+      "ins": 1,
+      "ref_words": 16,
+      "name_total": 0,
+      "name_correct": 0,
+      "name_hyp_total": 0,
+      "name_false_pos": 0,
+      "vocab_terms": [],
+      "punct_tp": 0,
+      "punct_fp": 1,
+      "punct_fn": 0,
+      "ref_boundaries": 0,
+      "hyp_boundaries": 1,
+      "hyp_has_terminal_punct": true,
+      "comma_ref": 1,
+      "comma_hyp": 0
+    },
+    "u22": {
+      "id": "u22",
+      "ref": "mark task twelve done",
+      "hyp": "Mark test q",
+      "wer": 0.8,
+      "sub": 2,
+      "del": 2,
+      "ins": 0,
+      "ref_words": 5,
+      "name_total": 0,
+      "name_correct": 0,
+      "name_hyp_total": 0,
+      "name_false_pos": 0,
+      "vocab_terms": [],
+      "punct_tp": 0,
+      "punct_fp": 0,
+      "punct_fn": 0,
+      "ref_boundaries": 0,
+      "hyp_boundaries": 0,
+      "hyp_has_terminal_punct": false,
+      "comma_ref": 0,
+      "comma_hyp": 0
+    },
+    "u23": {
+      "id": "u23",
+      "ref": "khora needs a second pass on the onnx export before we ship, the tdt joiner is timing out on anything longer than about eight seconds of audio. i already filed task 940 for it, but i think it's actually a sherpa version mismatch, not a model problem",
+      "hyp": "Khora needs a second pass on the on 6 port before we shoot. The TDT joiner is timing out on anything longer than about 8 seconds of audio. I already filed task 940 for it, but I think it's actually a Sherpa version mismatch, not a model problem.",
+      "wer": 0.08,
+      "sub": 3,
+      "del": 0,
+      "ins": 1,
+      "ref_words": 50,
+      "name_total": 1,
+      "name_correct": 1,
+      "name_hyp_total": 1,
+      "name_false_pos": 0,
+      "vocab_terms": [
+        {
+          "term": "khora",
+          "hit": true
+        }
+      ],
+      "punct_tp": 1,
+      "punct_fp": 1,
+      "punct_fn": 0,
+      "ref_boundaries": 1,
+      "hyp_boundaries": 2,
+      "hyp_has_terminal_punct": true,
+      "comma_ref": 3,
+      "comma_hyp": 2
+    },
+    "u24": {
+      "id": "u24",
+      "ref": "hey, quick one, is the daemon even up?",
+      "hyp": "Hey, Quick 1, is the demon even up?",
+      "wer": 0.125,
+      "sub": 1,
+      "del": 0,
+      "ins": 0,
+      "ref_words": 8,
+      "name_total": 0,
+      "name_correct": 0,
+      "name_hyp_total": 0,
+      "name_false_pos": 0,
+      "vocab_terms": [],
+      "punct_tp": 0,
+      "punct_fp": 0,
+      "punct_fn": 0,
+      "ref_boundaries": 0,
+      "hyp_boundaries": 0,
+      "hyp_has_terminal_punct": true,
+      "comma_ref": 2,
+      "comma_hyp": 2
+    },
+    "u25": {
+      "id": "u25",
+      "ref": "auris and khora both mis-hear task nine forty the same way, which is kind of funny actually, because they're nowhere near the same word phonetically",
+      "hyp": "Horis and Khora both mishear task 940 the same way, which is kind of funny actually, because they are nowhere near the same word phonetically.",
+      "wer": 0.2222222222222222,
+      "sub": 6,
+      "del": 0,
+      "ins": 0,
+      "ref_words": 27,
+      "name_total": 2,
+      "name_correct": 1,
+      "name_hyp_total": 1,
+      "name_false_pos": 0,
+      "vocab_terms": [
+        {
+          "term": "auris",
+          "hit": false
+        },
+        {
+          "term": "khora",
+          "hit": true
+        }
+      ],
+      "punct_tp": 0,
+      "punct_fp": 0,
+      "punct_fn": 0,
+      "ref_boundaries": 0,
+      "hyp_boundaries": 0,
+      "hyp_has_terminal_punct": true,
+      "comma_ref": 2,
+      "comma_hyp": 2
+    },
+    "u26": {
+      "id": "u26",
+      "ref": "put that under helios instead of mesa, wrong project",
+      "hyp": "put that under helios instead of mesa wrong project",
+      "wer": 0.0,
+      "sub": 0,
+      "del": 0,
+      "ins": 0,
+      "ref_words": 9,
+      "name_total": 2,
+      "name_correct": 2,
+      "name_hyp_total": 2,
+      "name_false_pos": 0,
+      "vocab_terms": [
+        {
+          "term": "helios",
+          "hit": true
+        },
+        {
+          "term": "mesa",
+          "hit": true
+        }
+      ],
+      "punct_tp": 0,
+      "punct_fp": 0,
+      "punct_fn": 0,
+      "ref_boundaries": 0,
+      "hyp_boundaries": 0,
+      "hyp_has_terminal_punct": false,
+      "comma_ref": 1,
+      "comma_hyp": 0
+    },
+    "u27": {
+      "id": "u27",
+      "ref": "okay so i think what's actually happening is when i dictate a really long rambling sentence like this one into mesa's live view the punctuation model just gives up somewhere around the third clause and everything after that turns into one giant run-on, which is exactly the kind of thing that's going to tank our sentence boundary f1 if we don't fix it before the khora demo",
+      "hyp": "Okay, so I think what's actually happening is when I dictate a really long rambling sentence like this one into mesa's lip view, the punctuation model just kicks up somewhere around the third clause and everything after that turns into one giant run-on, which is exactly the kind of thing that's going to tank our sentence boundary f1 if we don't fix it before the qor demo.",
+      "wer": 0.041666666666666664,
+      "sub": 3,
+      "del": 0,
+      "ins": 0,
+      "ref_words": 72,
+      "name_total": 2,
+      "name_correct": 1,
+      "name_hyp_total": 1,
+      "name_false_pos": 0,
+      "vocab_terms": [
+        {
+          "term": "mesa",
+          "hit": true
+        },
+        {
+          "term": "khora",
+          "hit": false
+        }
+      ],
+      "punct_tp": 0,
+      "punct_fp": 0,
+      "punct_fn": 0,
+      "ref_boundaries": 0,
+      "hyp_boundaries": 0,
+      "hyp_has_terminal_punct": true,
+      "comma_ref": 1,
+      "comma_hyp": 3
+    },
+    "u28": {
+      "id": "u28",
+      "ref": "stdin is empty, nothing to transcribe",
+      "hyp": "Sting is empty, nothing to transcribe.",
+      "wer": 0.16666666666666666,
+      "sub": 1,
+      "del": 0,
+      "ins": 0,
+      "ref_words": 6,
+      "name_total": 0,
+      "name_correct": 0,
+      "name_hyp_total": 0,
+      "name_false_pos": 0,
+      "vocab_terms": [],
+      "punct_tp": 0,
+      "punct_fp": 0,
+      "punct_fn": 0,
+      "ref_boundaries": 0,
+      "hyp_boundaries": 0,
+      "hyp_has_terminal_punct": true,
+      "comma_ref": 1,
+      "comma_hyp": 1
+    },
+    "u29": {
+      "id": "u29",
+      "ref": "so kokoro sounds great but it's auris we actually need working for khora's onboarding flow, right? because nobody's going to sit through a fifteen second load time just to hear a demo",
+      "hyp": "So kokoro sounds great but it's auris we actually need working for khora on botting flow, right? Because nobody's going to sit through a 15 second load time just to hear a demo.",
+      "wer": 0.05555555555555555,
+      "sub": 2,
+      "del": 0,
+      "ins": 0,
+      "ref_words": 36,
+      "name_total": 3,
+      "name_correct": 3,
+      "name_hyp_total": 3,
+      "name_false_pos": 0,
+      "vocab_terms": [
+        {
+          "term": "kokoro",
+          "hit": true
+        },
+        {
+          "term": "auris",
+          "hit": true
+        },
+        {
+          "term": "khora",
+          "hit": true
+        }
+      ],
+      "punct_tp": 1,
+      "punct_fp": 0,
+      "punct_fn": 0,
+      "ref_boundaries": 1,
+      "hyp_boundaries": 1,
+      "hyp_has_terminal_punct": true,
+      "comma_ref": 1,
+      "comma_hyp": 1
+    },
+    "u30": {
+      "id": "u30",
+      "ref": "task seven eighteen, task seven nineteen, and task seven twenty are all mine today, plus whatever spills over from yesterday's triage",
+      "hyp": "Task 7-18, task 7-19, and task 7-20 are all mine today, plus whatever spills over from yesterday's triage.",
+      "wer": 0.08333333333333333,
+      "sub": 1,
+      "del": 0,
+      "ins": 1,
+      "ref_words": 24,
+      "name_total": 0,
+      "name_correct": 0,
+      "name_hyp_total": 0,
+      "name_false_pos": 0,
+      "vocab_terms": [],
+      "punct_tp": 0,
+      "punct_fp": 0,
+      "punct_fn": 0,
+      "ref_boundaries": 0,
+      "hyp_boundaries": 0,
+      "hyp_has_terminal_punct": true,
+      "comma_ref": 3,
+      "comma_hyp": 3
+    },
+    "u31": {
+      "id": "u31",
+      "ref": "is the daemon up? i can't tell from here. check the socket.",
+      "hyp": "Is the demon up I can't tell from here check the socket.",
+      "wer": 0.07692307692307693,
+      "sub": 1,
+      "del": 0,
+      "ins": 0,
+      "ref_words": 13,
+      "name_total": 0,
+      "name_correct": 0,
+      "name_hyp_total": 0,
+      "name_false_pos": 0,
+      "vocab_terms": [],
+      "punct_tp": 0,
+      "punct_fp": 0,
+      "punct_fn": 2,
+      "ref_boundaries": 2,
+      "hyp_boundaries": 0,
+      "hyp_has_terminal_punct": true,
+      "comma_ref": 0,
+      "comma_hyp": 0
+    },
+    "u32": {
+      "id": "u32",
+      "ref": "the build's been red since last night. nobody's looked at it yet. i'll take it after lunch.",
+      "hyp": "The bill's been read since last night nobody's looked at it yet I'll take it after lunch.",
+      "wer": 0.1,
+      "sub": 2,
+      "del": 0,
+      "ins": 0,
+      "ref_words": 20,
+      "name_total": 0,
+      "name_correct": 0,
+      "name_hyp_total": 0,
+      "name_false_pos": 0,
+      "vocab_terms": [],
+      "punct_tp": 0,
+      "punct_fp": 0,
+      "punct_fn": 2,
+      "ref_boundaries": 2,
+      "hyp_boundaries": 0,
+      "hyp_has_terminal_punct": true,
+      "comma_ref": 0,
+      "comma_hyp": 0
+    },
+    "u33": {
+      "id": "u33",
+      "ref": "khora dropped every websocket frame during the recording. i checked the console and there's nothing useful in it. we'll need to reproduce it live before filing anything.",
+      "hyp": "Khora dropped every web socket frame during the recording. I checked the console, and there's nothing useful, and it will need to reproduce it live before filing anything.",
+      "wer": 0.1724137931034483,
+      "sub": 3,
+      "del": 1,
+      "ins": 1,
+      "ref_words": 29,
+      "name_total": 1,
+      "name_correct": 1,
+      "name_hyp_total": 1,
+      "name_false_pos": 0,
+      "vocab_terms": [
+        {
+          "term": "khora",
+          "hit": true
+        }
+      ],
+      "punct_tp": 1,
+      "punct_fp": 0,
+      "punct_fn": 1,
+      "ref_boundaries": 2,
+      "hyp_boundaries": 1,
+      "hyp_has_terminal_punct": true,
+      "comma_ref": 0,
+      "comma_hyp": 2
+    },
+    "u34": {
+      "id": "u34",
+      "ref": "did khora ever pick up that viewport fix? i thought it landed last week. maybe i'm thinking of a different branch.",
+      "hyp": "Did Coru ever pick up that Bupot fix? I thought it landed last week. Maybe I'm thinking of a different brunch.",
+      "wer": 0.13636363636363635,
+      "sub": 3,
+      "del": 0,
+      "ins": 0,
+      "ref_words": 22,
+      "name_total": 1,
+      "name_correct": 0,
+      "name_hyp_total": 0,
+      "name_false_pos": 0,
+      "vocab_terms": [
+        {
+          "term": "khora",
+          "hit": false
+        }
+      ],
+      "punct_tp": 2,
+      "punct_fp": 0,
+      "punct_fn": 0,
+      "ref_boundaries": 2,
+      "hyp_boundaries": 2,
+      "hyp_has_terminal_punct": true,
+      "comma_ref": 0,
+      "comma_hyp": 0
+    },
+    "u35": {
+      "id": "u35",
+      "ref": "auris is still mishearing task nine forty as task ninety. i've tried the vocabulary list twice. it's not fixing it.",
+      "hyp": "Task 90 I tried the vocabulary list twice it's not fixing it.",
+      "wer": 0.391304347826087,
+      "sub": 0,
+      "del": 9,
+      "ins": 0,
+      "ref_words": 23,
+      "name_total": 1,
+      "name_correct": 0,
+      "name_hyp_total": 0,
+      "name_false_pos": 0,
+      "vocab_terms": [
+        {
+          "term": "auris",
+          "hit": false
+        }
+      ],
+      "punct_tp": 0,
+      "punct_fp": 0,
+      "punct_fn": 2,
+      "ref_boundaries": 2,
+      "hyp_boundaries": 0,
+      "hyp_has_terminal_punct": true,
+      "comma_ref": 0,
+      "comma_hyp": 0
+    },
+    "u36": {
+      "id": "u36",
+      "ref": "helios needs reindexing after the merge. the symbol graph is stale for anything touched in the last two days. i'll kick it off once the build finishes.",
+      "hyp": "Helios needs re-indexing after the merge. The symbol graph is stale for anything touched in the last 2 days. I'll kick it off once the build finishes.",
+      "wer": 0.07142857142857142,
+      "sub": 1,
+      "del": 0,
+      "ins": 1,
+      "ref_words": 28,
+      "name_total": 1,
+      "name_correct": 1,
+      "name_hyp_total": 1,
+      "name_false_pos": 0,
+      "vocab_terms": [
+        {
+          "term": "helios",
+          "hit": true
+        }
+      ],
+      "punct_tp": 2,
+      "punct_fp": 0,
+      "punct_fn": 0,
+      "ref_boundaries": 2,
+      "hyp_boundaries": 2,
+      "hyp_has_terminal_punct": true,
+      "comma_ref": 0,
+      "comma_hyp": 0
+    },
+    "u37": {
+      "id": "u37",
+      "ref": "khora's still blocked on task 118, same as before. qorvex passed all its android runs this morning though, so at least something's moving. i want to close out the ios flake before we touch the web suite again. can we get someone on the cdp handshake today?",
+      "hyp": "Core is still blocked on task 118, same as before. Core dex passed all its Android runs this morning though, so at least something's moving. I want to close out the iOS plate before we touch the web street again. Can we get someone on a CDP handshake today?",
+      "wer": 0.13725490196078433,
+      "sub": 6,
+      "del": 0,
+      "ins": 1,
+      "ref_words": 51,
+      "name_total": 2,
+      "name_correct": 0,
+      "name_hyp_total": 0,
+      "name_false_pos": 0,
+      "vocab_terms": [
+        {
+          "term": "khora",
+          "hit": false
+        },
+        {
+          "term": "qorvex",
+          "hit": false
+        }
+      ],
+      "punct_tp": 3,
+      "punct_fp": 0,
+      "punct_fn": 0,
+      "ref_boundaries": 3,
+      "hyp_boundaries": 3,
+      "hyp_has_terminal_punct": true,
+      "comma_ref": 2,
+      "comma_hyp": 2
+    },
+    "u38": {
+      "id": "u38",
+      "ref": "kokoro's latency numbers finally came in under budget. mesa's speech driver should be able to switch over without a config change. i still want to run the ab test overnight before we flip the default. worst case we just roll it back in the morning.",
+      "hyp": "Kokoro's latency numbers finally came in under budget mesa's speech driver should be able to switch over without a config change I still want to run the app test overnight before we flip the default worst case we just roll it back in the morning mesa k",
+      "wer": 0.06382978723404255,
+      "sub": 1,
+      "del": 0,
+      "ins": 2,
+      "ref_words": 47,
+      "name_total": 2,
+      "name_correct": 2,
+      "name_hyp_total": 3,
+      "name_false_pos": 1,
+      "vocab_terms": [
+        {
+          "term": "kokoro",
+          "hit": true
+        },
+        {
+          "term": "mesa",
+          "hit": true
+        }
+      ],
+      "punct_tp": 0,
+      "punct_fp": 0,
+      "punct_fn": 3,
+      "ref_boundaries": 3,
+      "hyp_boundaries": 0,
+      "hyp_has_terminal_punct": false,
+      "comma_ref": 0,
+      "comma_hyp": 0
+    },
+    "u39": {
+      "id": "u39",
+      "ref": "auris flagged the segment as silence but there was clearly speech in it. i re-ran it through khora's mic capture to compare. same result both times.",
+      "hyp": "Oris flagged the segment as silence, but there was clearly speech in it. I re-ran it through khora's mic capture to compare, same result both times.",
+      "wer": 0.03571428571428571,
+      "sub": 1,
+      "del": 0,
+      "ins": 0,
+      "ref_words": 28,
+      "name_total": 2,
+      "name_correct": 1,
+      "name_hyp_total": 1,
+      "name_false_pos": 0,
+      "vocab_terms": [
+        {
+          "term": "auris",
+          "hit": false
+        },
+        {
+          "term": "khora",
+          "hit": true
+        }
+      ],
+      "punct_tp": 1,
+      "punct_fp": 0,
+      "punct_fn": 1,
+      "ref_boundaries": 2,
+      "hyp_boundaries": 1,
+      "hyp_has_terminal_punct": true,
+      "comma_ref": 0,
+      "comma_hyp": 2
+    },
+    "u40": {
+      "id": "u40",
+      "ref": "qorvex's tap coordinates were off by a few pixels on the new simulator image. i recalibrated against the accessibility tree instead. seems stable now.",
+      "hyp": "Qorvex's tack coordinates were off by a few pixels on the new simulator image and recalibrated against the accessibility tree instead, seems stable now.",
+      "wer": 0.08,
+      "sub": 2,
+      "del": 0,
+      "ins": 0,
+      "ref_words": 25,
+      "name_total": 1,
+      "name_correct": 1,
+      "name_hyp_total": 1,
+      "name_false_pos": 0,
+      "vocab_terms": [
+        {
+          "term": "qorvex",
+          "hit": true
+        }
+      ],
+      "punct_tp": 0,
+      "punct_fp": 0,
+      "punct_fn": 2,
+      "ref_boundaries": 2,
+      "hyp_boundaries": 0,
+      "hyp_has_terminal_punct": true,
+      "comma_ref": 0,
+      "comma_hyp": 1
+    }
+  }
+}
