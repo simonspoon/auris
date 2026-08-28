@@ -10,8 +10,11 @@ keywords = ["stt", "speech-to-text", "parakeet", "cli", "onnx"]
 categories = ["command-line-utilities", "multimedia::audio"]
 
 [dependencies]
+clap = { version = "4", features = ["derive"] }
+ctrlc = "3"
 hound = "3.5.1"
 rubato = "5.0.0"
+serde_json = "1"
 sherpa-onnx = "=1.13.6"
 
 [dev-dependencies]

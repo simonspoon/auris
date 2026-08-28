@@ -1,11 +1,498 @@
-// Placeholder. Later tasks land the real CLI here (argument parsing, the
-// transcribe/serve subcommands, exit codes).
+//! The one-shot transcribe path: audio in (stdin or `PATH`), transcript out
+//! on stdout (README "Synopsis", "The contract"). This module is the client
+//! half of auris; it knows how to read audio, resolve a model, load and run
+//! [`crate::engine::Recognizer`] once, and shape the result the way
+//! `--format` says. It does not talk to a daemon — that's `--no-daemon`'s
+//! *current* behaviour for every invocation, until `auris serve` (task 951)
+//! gives `-m`/`--socket`/`--no-daemon` something real to mean.
+
+use std::io::{IsTerminal, Read, Write};
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Instant;
+
+use clap::{Parser, ValueEnum};
+
+use crate::audio;
+use crate::engine::{EngineConfig, Recognizer};
+
+/// Exit codes, copied from kokoro-rs (README "Exit codes"), not reinvented.
+const OK: i32 = 0;
+const NOTHING_TRANSCRIBED: i32 = 1;
+const USAGE: i32 = 2;
+const INTERRUPTED: i32 = 130;
+
+/// The only model auris knows how to fetch today (README "Which model, and
+/// `-m`").
+const DEFAULT_MODEL_NAME: &str = "parakeet-tdt-0.6b-v2-int8";
+
+/// The five files that make a model directory "installed" (README "The
+/// cache") — `bpe.vocab` included, since a half-generated model is just as
+/// unusable as a half-downloaded one.
+const REQUIRED_MODEL_FILES: [&str; 5] = [
+    "encoder.int8.onnx",
+    "decoder.int8.onnx",
+    "joiner.int8.onnx",
+    "tokens.txt",
+    "bpe.vocab",
+];
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
+pub enum Format {
+    Text,
+    Json,
+}
+
+#[derive(Parser)]
+#[command(
+    name = "auris",
+    about = "Speech-to-text with Parakeet TDT 0.6B v2 (int8). \
+             Reads audio from stdin or a file argument, writes the transcript to stdout.",
+    version
+)]
+pub struct Args {
+    /// Audio file to transcribe (default: read stdin)
+    path: Option<PathBuf>,
+
+    /// Model to use: a name from --list-models, or a path to a model directory
+    #[arg(short = 'm', long = "model", value_name = "NAME")]
+    model: Option<String>,
+
+    /// Output shape
+    #[arg(long, value_enum, default_value_t = Format::Text)]
+    format: Format,
+
+    /// Fail rather than fetch a missing model on a real run
+    #[arg(long)]
+    no_download: bool,
+
+    /// Print installed model names, one per line, and exit
+    #[arg(long)]
+    list_models: bool,
+
+    // No-op today: every call already runs in-process; `auris serve` is
+    // what will give this flag a daemon to opt out of.
+    /// Load the recognizer in-process instead of talking to a daemon
+    #[arg(long)]
+    #[allow(dead_code)]
+    no_daemon: bool,
+
+    // No-op today, for the same reason as --no-daemon above.
+    /// Daemon socket path (default $AURIS_HOME/auris.sock)
+    #[arg(long, value_name = "PATH")]
+    #[allow(dead_code)]
+    socket: Option<PathBuf>,
+
+    /// Suppress the progress line
+    #[arg(short, long)]
+    quiet: bool,
+}
 
 pub fn main() -> i32 {
-    let mut args = std::env::args();
-    let _bin = args.next();
-    if args.next().as_deref() == Some("--version") {
-        println!("auris {}", env!("CARGO_PKG_VERSION"));
+    run(Args::parse())
+}
+
+/// Turns Ctrl-C into a polled flag rather than an unwind — the recognizer
+/// holds an ONNX Runtime session that needs no help from a panic mid-decode.
+/// A second Ctrl-C kills the process immediately, for a wedged run.
+fn install_interrupt_handler() -> Arc<AtomicBool> {
+    let interrupt = Arc::new(AtomicBool::new(false));
+    let flag = Arc::clone(&interrupt);
+    let _ = ctrlc::set_handler(move || {
+        if flag.swap(true, Ordering::SeqCst) {
+            std::process::exit(INTERRUPTED);
+        }
+    });
+    interrupt
+}
+
+/// `$AURIS_HOME`, defaulting to `$HOME/.cache/auris` — computed exactly as
+/// kokoro-rs computes `KOKORO_HOME` (README "The cache", `models.rs:65-71`):
+/// read the env var, else `$HOME/.cache/<name>`, falling back to `.` when
+/// `$HOME` is unset. Takes `home` rather than reading `$HOME` itself so the
+/// one env read lives at the top of `run`, not scattered through pure
+/// helpers.
+fn auris_home(home: Option<&str>) -> PathBuf {
+    if let Ok(dir) = std::env::var("AURIS_HOME") {
+        return PathBuf::from(dir);
     }
-    0
+    PathBuf::from(home.unwrap_or("."))
+        .join(".cache")
+        .join("auris")
+}
+
+/// Expands a leading `~/`, mirroring kokoro-rs's `expand_tilde`
+/// (`models.rs:104-111`) exactly — nothing fancier than that is needed here
+/// either. Takes `home` as a parameter, rather than reading `$HOME` itself,
+/// so [`resolve_model_source`] stays a pure function safe to call from
+/// tests run in parallel threads (env vars are process-global).
+fn expand_tilde(path: &str, home: Option<&str>) -> PathBuf {
+    match (path.strip_prefix("~/"), home) {
+        (Some(rest), Some(home)) => PathBuf::from(home).join(rest),
+        _ => PathBuf::from(path),
+    }
+}
+
+/// Where a model directory came from, and so how a missing one should be
+/// treated: a name or path the caller gave explicitly (`-m`, `AURIS_MODEL`)
+/// is a hard usage error when absent (README "Which model, and `-m`",
+/// "Environment"); the default name falling through unresolved just means
+/// "not fetched yet" (README "`--no-download`").
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ModelSource {
+    Explicit(PathBuf),
+    Default(PathBuf),
+}
+
+/// Resolves `-m` / `AURIS_MODEL` / the default name into a model directory,
+/// without touching the filesystem — precedence is `-m` beats `AURIS_MODEL`
+/// beats the default name (README "Which model, and `-m`"). The
+/// path-vs-name discriminator is a path separator, or a leading `~`: an
+/// argument containing `/` (or starting with `~`) is a path, anything else
+/// is a name looked up under `<auris_home>/models/`.
+fn resolve_model_source(
+    model_flag: Option<&str>,
+    auris_model_env: Option<&str>,
+    auris_home: &Path,
+    home: Option<&str>,
+) -> ModelSource {
+    if let Some(m) = model_flag {
+        let path = if m.contains('/') || m.starts_with('~') {
+            expand_tilde(m, home)
+        } else {
+            auris_home.join("models").join(m)
+        };
+        return ModelSource::Explicit(path);
+    }
+    if let Some(e) = auris_model_env {
+        return ModelSource::Explicit(expand_tilde(e, home));
+    }
+    ModelSource::Default(auris_home.join("models").join(DEFAULT_MODEL_NAME))
+}
+
+/// A model directory is "installed" only when all five required files are
+/// present (README "The cache") — a half-finished download or a
+/// not-yet-generated `bpe.vocab` must be invisible, not offered and then
+/// broken.
+fn model_dir_is_complete(dir: &Path) -> bool {
+    dir.is_dir() && REQUIRED_MODEL_FILES.iter().all(|f| dir.join(f).is_file())
+}
+
+/// Scans `<auris_home>/models/` for complete model directories, sorted by
+/// name. Never touches the network, never fails: a missing or unreadable
+/// models directory is just an empty list, matching README
+/// "`--no-download`"'s promise that `--list-models` "exits 0 even with
+/// nothing installed" and must never hang.
+fn list_models(auris_home: &Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(auris_home.join("models"))
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| model_dir_is_complete(&entry.path()))
+        .filter_map(|entry| entry.file_name().into_string().ok())
+        .collect();
+    names.sort();
+    names
+}
+
+/// Builds the `segment` line of `--format json` output (README "`--format
+/// json`"). `end_seconds` is the decoded utterance's duration; a single
+/// utterance always starts at 0.0, since per-utterance segmentation within a
+/// stream is the later streaming task, not this one.
+fn segment_line(text: &str, end_seconds: f64) -> String {
+    serde_json::json!({
+        "type": "segment",
+        "index": 0,
+        "text": text,
+        "start": 0.0,
+        "end": end_seconds,
+    })
+    .to_string()
+}
+
+/// Builds the `transcript` line of `--format json` output — always the last
+/// line on a run that produced one (README "`--format json`").
+fn transcript_line(text: &str) -> String {
+    serde_json::json!({
+        "type": "transcript",
+        "text": text,
+    })
+    .to_string()
+}
+
+fn run(args: Args) -> i32 {
+    let interrupt = install_interrupt_handler();
+    let verbose = !args.quiet && std::io::stderr().is_terminal();
+    let home_env = std::env::var("HOME").ok();
+    let home = auris_home(home_env.as_deref());
+
+    if args.list_models {
+        // Never touches the network, never loads a recognizer, never hangs
+        // (README "`--no-download`") — --no-download changes nothing here,
+        // because there is nothing for it to refuse.
+        for name in list_models(&home) {
+            println!("{name}");
+        }
+        return OK;
+    }
+
+    let mut input: Box<dyn Read> = if let Some(path) = &args.path {
+        match std::fs::File::open(path) {
+            Ok(f) => Box::new(f),
+            Err(e) => {
+                eprintln!("auris: failed to open {}: {e}", path.display());
+                return USAGE;
+            }
+        }
+    } else {
+        // Audio never reaches the argument parser (README "stdin"); the
+        // usage error fires iff PATH is omitted and stdin is a terminal,
+        // never merely because a PATH was given.
+        if std::io::stdin().is_terminal() {
+            eprintln!("auris: no input given; pass a file path or pipe audio in (auris --help)");
+            return USAGE;
+        }
+        Box::new(std::io::stdin())
+    };
+
+    let samples = match audio::decode(&mut input) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("auris: {e}");
+            return e.exit_code();
+        }
+    };
+    if interrupt.load(Ordering::SeqCst) {
+        return INTERRUPTED;
+    }
+
+    let env_model = std::env::var("AURIS_MODEL").ok();
+    let source = resolve_model_source(
+        args.model.as_deref(),
+        env_model.as_deref(),
+        &home,
+        home_env.as_deref(),
+    );
+    let model_dir = match source {
+        ModelSource::Default(path) => {
+            if !model_dir_is_complete(&path) {
+                // Automatic fetching (README "Getting the model") is not
+                // implemented here — it lands with the model-download work
+                // — so a missing default model takes this exit-1 path
+                // regardless of --no-download today.
+                eprintln!("auris: missing {}", path.display());
+                eprintln!("auris: run `auris serve` to fetch it");
+                return NOTHING_TRANSCRIBED;
+            }
+            path
+        }
+        // A name or path the caller gave explicitly: let Recognizer::load's
+        // own validation (missing dir, missing file, missing bpe.vocab) do
+        // the checking, so its USAGE-error messages stay in one place.
+        ModelSource::Explicit(path) => path,
+    };
+    if interrupt.load(Ordering::SeqCst) {
+        return INTERRUPTED;
+    }
+
+    if verbose {
+        eprintln!("auris: loading {}", model_dir.display());
+    }
+    let load_start = Instant::now();
+    let recognizer = match Recognizer::load(&EngineConfig {
+        model_dir,
+        ..Default::default()
+    }) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("auris: {e}");
+            return e.exit_code();
+        }
+    };
+    if verbose {
+        eprintln!("auris: model loaded in {:?}", load_start.elapsed());
+    }
+    if interrupt.load(Ordering::SeqCst) {
+        return INTERRUPTED;
+    }
+
+    let decode_start = Instant::now();
+    let text = match recognizer.decode(&samples) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("auris: {e}");
+            return e.exit_code();
+        }
+    };
+    if verbose {
+        eprintln!("auris: decoded in {:?}", decode_start.elapsed());
+    }
+    if interrupt.load(Ordering::SeqCst) {
+        return INTERRUPTED;
+    }
+
+    let text = text.trim();
+    if text.is_empty() {
+        // No blank line, no JSON — a run with no transcript writes nothing
+        // to stdout at all (README "stdout").
+        return NOTHING_TRANSCRIBED;
+    }
+
+    let stdout = std::io::stdout();
+    let mut out = stdout.lock();
+    match args.format {
+        Format::Text => {
+            let _ = writeln!(out, "{text}");
+        }
+        Format::Json => {
+            let duration = samples.len() as f64 / audio::TARGET_SAMPLE_RATE as f64;
+            let _ = writeln!(out, "{}", segment_line(text, duration));
+            let _ = out.flush();
+            let _ = writeln!(out, "{}", transcript_line(text));
+            let _ = out.flush();
+        }
+    }
+    // main.rs hands our return value straight to std::process::exit, which
+    // skips destructors — flush explicitly rather than trust stdout's Drop.
+    let _ = out.flush();
+
+    OK
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn model_flag_with_slash_is_a_path() {
+        let home = PathBuf::from("/home/x/.cache/auris");
+        let source = resolve_model_source(Some("./local/model"), None, &home, None);
+        assert_eq!(
+            source,
+            ModelSource::Explicit(PathBuf::from("./local/model"))
+        );
+    }
+
+    #[test]
+    fn model_flag_with_tilde_is_a_path_and_expands() {
+        let home = PathBuf::from("/home/tildetest/.cache/auris");
+        let source =
+            resolve_model_source(Some("~/models/mine"), None, &home, Some("/home/tildetest"));
+        assert_eq!(
+            source,
+            ModelSource::Explicit(PathBuf::from("/home/tildetest/models/mine"))
+        );
+    }
+
+    #[test]
+    fn model_flag_without_slash_is_a_name_under_auris_home() {
+        let home = PathBuf::from("/home/x/.cache/auris");
+        let source = resolve_model_source(Some("parakeet-tdt-0.6b-v2-int8"), None, &home, None);
+        assert_eq!(
+            source,
+            ModelSource::Explicit(home.join("models").join("parakeet-tdt-0.6b-v2-int8"))
+        );
+    }
+
+    #[test]
+    fn model_flag_beats_env_var() {
+        let home = PathBuf::from("/home/x/.cache/auris");
+        let source = resolve_model_source(Some("from-flag"), Some("/from/env"), &home, None);
+        assert_eq!(
+            source,
+            ModelSource::Explicit(home.join("models").join("from-flag"))
+        );
+    }
+
+    #[test]
+    fn env_var_beats_default_and_is_always_a_path() {
+        let home = PathBuf::from("/home/x/.cache/auris");
+        let source = resolve_model_source(None, Some("also-no-slash"), &home, None);
+        assert_eq!(
+            source,
+            ModelSource::Explicit(PathBuf::from("also-no-slash"))
+        );
+    }
+
+    #[test]
+    fn default_name_used_when_nothing_given() {
+        let home = PathBuf::from("/home/x/.cache/auris");
+        let source = resolve_model_source(None, None, &home, None);
+        assert_eq!(
+            source,
+            ModelSource::Default(home.join("models").join(DEFAULT_MODEL_NAME))
+        );
+    }
+
+    fn touch(path: &Path) {
+        std::fs::write(path, b"").unwrap();
+    }
+
+    #[test]
+    fn list_models_lists_only_complete_dirs_sorted() {
+        let tmp = tempfile::tempdir().unwrap();
+        let models = tmp.path().join("models");
+        std::fs::create_dir_all(&models).unwrap();
+
+        // Complete: every required file present.
+        let complete = models.join("zeta-complete");
+        std::fs::create_dir_all(&complete).unwrap();
+        for f in REQUIRED_MODEL_FILES {
+            touch(&complete.join(f));
+        }
+
+        // Incomplete: missing bpe.vocab.
+        let incomplete = models.join("alpha-incomplete");
+        std::fs::create_dir_all(&incomplete).unwrap();
+        for f in [
+            "encoder.int8.onnx",
+            "decoder.int8.onnx",
+            "joiner.int8.onnx",
+            "tokens.txt",
+        ] {
+            touch(&incomplete.join(f));
+        }
+
+        let names = list_models(tmp.path());
+        assert_eq!(names, vec!["zeta-complete".to_string()]);
+    }
+
+    #[test]
+    fn list_models_on_missing_directory_is_empty_not_an_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        // tmp.path()/models does not exist at all.
+        let names = list_models(tmp.path());
+        assert!(names.is_empty());
+    }
+
+    #[test]
+    fn json_segment_line_has_the_readme_shape() {
+        let line = segment_line("book a call with khora for tomorrow", 2.14);
+        let v: serde_json::Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(v["type"], "segment");
+        assert_eq!(v["index"], 0);
+        assert_eq!(v["text"], "book a call with khora for tomorrow");
+        assert_eq!(v["start"], 0.0);
+        assert_eq!(v["end"], 2.14);
+    }
+
+    #[test]
+    fn json_transcript_line_has_the_readme_shape() {
+        let line = transcript_line("book a call with khora for tomorrow");
+        let v: serde_json::Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(v["type"], "transcript");
+        assert_eq!(v["text"], "book a call with khora for tomorrow");
+        // Only two fields on this line: no leftover segment fields.
+        assert_eq!(v.as_object().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn json_lines_escape_quotes_correctly() {
+        // The reason serde_json builds this instead of hand-rolled string
+        // formatting: text containing a literal quote must round-trip.
+        let line = transcript_line(r#"she said "khora" clearly"#);
+        let v: serde_json::Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(v["text"], r#"she said "khora" clearly"#);
+    }
 }
