@@ -13,7 +13,7 @@
 //! socket.
 
 use std::io::{Cursor, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
 /// Runs the auris binary with `stdin` piped in and a brand-new `AURIS_HOME`,
@@ -163,50 +163,75 @@ fn stdin_is_empty() {
     );
 }
 
-/// Locates a real, complete model directory for the one test that needs to
-/// actually reach the recognizer, using the exact same env var and fallback
-/// as `src/engine.rs`'s `spike_model_dir` — the existing convention in this
-/// crate for "here is a model to test against" — rather than inventing a
-/// second one. Unlike `spike_model_dir` (which only checks for the encoder,
-/// because its callers build their own temp dir of symlinks), this checks
-/// every file README "The cache" requires, since this test runs the real
-/// binary against the directory as given, with no symlinking step of its
-/// own.
-fn model_dir_for_silence_test() -> Option<PathBuf> {
+/// Locates a real spike model directory, using the exact same env var and
+/// fallback as `src/engine.rs`'s `spike_model_dir` — the existing
+/// convention in this crate for "here is a model to test against" — rather
+/// than inventing a second one. Only checks for the encoder, because
+/// `symlinked_model_dir` below builds its own temp dir of symlinks
+/// (`spike/models/parakeet` ships `bpe_synth.vocab`, not the literal
+/// `bpe.vocab` a complete `REQUIRED_MODEL_FILES` directory needs).
+fn spike_model_dir() -> Option<PathBuf> {
     let dir = std::env::var("AURIS_TEST_MODEL_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("spike/models/parakeet")
         });
-    let required = [
-        "encoder.int8.onnx",
-        "decoder.int8.onnx",
-        "joiner.int8.onnx",
-        "tokens.txt",
-        "bpe.vocab",
-    ];
-    if required.iter().all(|f| dir.join(f).is_file()) {
+    if dir.join("encoder.int8.onnx").is_file() {
         Some(dir)
     } else {
         eprintln!(
-            "skip: no complete model at {} (set AURIS_TEST_MODEL_DIR to override)",
+            "skip: no model at {} (set AURIS_TEST_MODEL_DIR to override)",
             dir.display()
         );
         None
     }
 }
 
-/// Silence reaching a real recognizer must exit "no transcript" rather than
-/// print an empty line. Needs a real installed model, which is not present
-/// on CI or this host, so this is gated on `AURIS_TEST_MODEL_DIR` and skips
-/// (does not fail) when that isn't set — matching the skip pattern already
-/// used by `src/engine.rs`'s own model-gated tests.
+/// Builds a temp model dir of symlinks pointing at the real spike model,
+/// with `bpe_synth.vocab` linked in as `bpe.vocab` — same shape
+/// `tests/fixtures.rs`'s `symlinked_model_dir` builds, and for the same
+/// reason: `--no-daemon -m <dir>` requires all five `REQUIRED_MODEL_FILES`
+/// (`src/cli.rs`), and the spike model only ships `bpe_synth.vocab`. An
+/// integration test can't import the crate's `#[cfg(test)]` helpers, so
+/// this is a deliberate near-duplicate of that copy, not a shared
+/// test-support module.
+fn symlinked_model_dir(real_dir: &Path) -> tempfile::TempDir {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    for name in [
+        "encoder.int8.onnx",
+        "decoder.int8.onnx",
+        "joiner.int8.onnx",
+        "tokens.txt",
+    ] {
+        std::os::unix::fs::symlink(real_dir.join(name), tmp.path().join(name))
+            .unwrap_or_else(|e| panic!("symlink {name}: {e}"));
+    }
+    std::os::unix::fs::symlink(
+        real_dir.join("bpe_synth.vocab"),
+        tmp.path().join("bpe.vocab"),
+    )
+    .expect("symlink bpe.vocab");
+    tmp
+}
+
+/// Silence must exit "no transcript" without ever reaching the recognizer —
+/// that's the point of the energy gate in `src/audio.rs`. This used to be
+/// gated on a `model_dir_for_silence_test` helper that required a literal
+/// `bpe.vocab`, which `spike/models/parakeet` never ships, so this test
+/// always skipped and never actually ran; it now builds a symlinked model
+/// dir (`symlinked_model_dir`, matching `tests/fixtures.rs`'s convention)
+/// and genuinely exercises the contract. Still gated on
+/// `AURIS_TEST_MODEL_DIR`/`spike/models/parakeet` being present, since CI
+/// has no model, but with the gate in place this doesn't even need the
+/// recognizer to be correct — only reachable, since silent audio is turned
+/// away before it gets there.
 #[test]
 fn silence_is_nothing_transcribed() {
-    let Some(model) = model_dir_for_silence_test() else {
+    let Some(model_dir) = spike_model_dir() else {
         return;
     };
-    let model = model.to_string_lossy().into_owned();
+    let tmp = symlinked_model_dir(&model_dir);
+    let model = tmp.path().to_string_lossy().into_owned();
     let out = run_auris(&["--no-daemon", "--quiet", "-m", &model], &silence_wav_1s());
     assert_eq!(out.status.code(), Some(1));
     assert!(out.stdout.is_empty());

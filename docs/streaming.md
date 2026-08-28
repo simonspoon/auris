@@ -8,6 +8,15 @@ Lines — one self-describing JSON object per line, discriminated by a `type`
 field — from day one, and no line auris writes is ever retracted or
 revised.**
 
+A crude fixed-threshold energy gate (`audio::is_silent`, task 958) already
+exists ahead of this work, as a precondition for the README "Exit codes"
+contract: the real model hallucinates words on digital silence instead of
+returning nothing, so auris now catches that before decoding rather than
+trusting the recognizer's output. It is not the VAD segmentation described
+below — it answers one yes/no question about a whole utterance and detects
+no speech/silence boundary at all — and the Silero VAD this document settles
+on supersedes it once segmentation is built.
+
 ## Why "streaming" had to be redefined for STT
 
 kokoro-rs streams because its *output* is elastic: it synthesises sentence by

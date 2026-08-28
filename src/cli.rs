@@ -28,6 +28,11 @@ const NOTHING_TRANSCRIBED: i32 = 1;
 const USAGE: i32 = 2;
 const INTERRUPTED: i32 = 130;
 
+/// The one message for "no transcript" — printed whether the energy gate
+/// trips before the recognizer runs or the recognizer itself returns
+/// nothing, so there is a single wording for mesa to match on, not two.
+const NOTHING_TRANSCRIBED_MSG: &str = "auris: nothing transcribed; no speech in the audio";
+
 /// The only model auris knows how to fetch today (README "Which model, and
 /// `-m`").
 const DEFAULT_MODEL_NAME: &str = "parakeet-tdt-0.6b-v2-int8";
@@ -357,6 +362,19 @@ fn run_transcribe(args: Args) -> i32 {
         return INTERRUPTED;
     }
 
+    // The energy gate (`audio::is_silent`) runs here — after model
+    // resolution, so a missing model still produces its existing error and
+    // exit code above, but before the recognizer is ever reached. It covers
+    // both the daemon and `--no-daemon` paths, since both decode from this
+    // same `samples`. The real Parakeet model hallucinates "Okay." on
+    // digital silence rather than returning nothing, which would otherwise
+    // slip past the post-decode `text.trim().is_empty()` check below and
+    // break README "Exit codes"'s exit-1-on-silence contract.
+    if audio::is_silent(&samples) {
+        eprintln!("{NOTHING_TRANSCRIBED_MSG}");
+        return NOTHING_TRANSCRIBED;
+    }
+
     // Parsed and validated before the ~4 s model load, so a bad
     // --vocabulary-file fails fast (README "`--vocabulary-file`",
     // docs/vocabulary.md "Validation"). The cap warning is a diagnostic, not
@@ -464,7 +482,7 @@ fn run_transcribe(args: Args) -> i32 {
         // to stdout at all (README "stdout"). The stderr line still exists
         // so mesa can tell "you didn't say anything" from a broken install,
         // which a silent exit 1 cannot distinguish.
-        eprintln!("auris: nothing transcribed; no speech in the audio");
+        eprintln!("{NOTHING_TRANSCRIBED_MSG}");
         return NOTHING_TRANSCRIBED;
     }
 

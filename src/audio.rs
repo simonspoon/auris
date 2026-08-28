@@ -36,6 +36,58 @@ pub const MAX_DECODED_SECONDS: u32 = 10 * 60;
 /// `OfflineRecognizer` was built for (`docs/engine.md`).
 pub const TARGET_SAMPLE_RATE: u32 = 16_000;
 
+/// Below this maximum-RMS-over-a-window threshold, [`is_silent`] calls the
+/// audio silent. −60 dBFS (1e-3), chosen ~100x below the quietest speech
+/// fixture measured in this repo (`tests/fixtures/stereo-44100.wav`, max
+/// 30 ms window RMS 1.1377e-1) and far above pure digital zero
+/// (`tests/fixtures/silence.wav`, exactly 0.0). The real Parakeet model
+/// hallucinates "Okay." on 1 s of digital silence rather than returning
+/// nothing (`tests/fixtures.rs::silence_yields_no_transcript`), which broke
+/// README "Exit codes"'s exit-1-on-silence contract undetected; this gate
+/// exists to catch that before the recognizer is ever reached. It is
+/// calibrated to catch "no signal arrived," not "quiet room" — there is no
+/// ambient-noise fixture in this repo to calibrate a room-tone threshold
+/// against, so don't read a pass here as a claim this handles real-world
+/// background noise. This is not VAD: `docs/streaming.md`'s Silero VAD
+/// segmentation is future work, and supersedes this gate once built.
+const SILENCE_RMS_THRESHOLD: f32 = 1e-3;
+
+/// Window size [`is_silent`] computes the max RMS over, in samples at
+/// [`TARGET_SAMPLE_RATE`] — 30 ms, short enough that a brief burst of real
+/// speech inside an otherwise-silent buffer isn't averaged away by a
+/// longer window.
+const SILENCE_WINDOW_SAMPLES: usize = (TARGET_SAMPLE_RATE as usize * 30) / 1000;
+
+/// True when the maximum RMS over any [`SILENCE_WINDOW_SAMPLES`]-sample
+/// window of `samples` is below [`SILENCE_RMS_THRESHOLD`] — see that
+/// constant's doc comment for the threshold, the margin it was chosen
+/// against, and why this is not VAD. `samples` shorter than one window (or
+/// empty) is treated as a single window covering the whole slice.
+pub fn is_silent(samples: &[f32]) -> bool {
+    if samples.is_empty() {
+        return true;
+    }
+    let window = SILENCE_WINDOW_SAMPLES.min(samples.len()).max(1);
+
+    // Running sum of squares over a sliding window, O(n): add the entering
+    // sample's square, drop the leaving one's, each step.
+    let mut sum_sq: f64 = samples[..window]
+        .iter()
+        .map(|&s| (s as f64) * (s as f64))
+        .sum();
+    let mut max_sum_sq = sum_sq;
+    for i in window..samples.len() {
+        let entering = samples[i] as f64;
+        let leaving = samples[i - window] as f64;
+        sum_sq += entering * entering - leaving * leaving;
+        if sum_sq > max_sum_sq {
+            max_sum_sq = sum_sq;
+        }
+    }
+    let max_rms = (max_sum_sq / window as f64).sqrt() as f32;
+    max_rms < SILENCE_RMS_THRESHOLD
+}
+
 /// The range of source sample rates this module will resample from —
 /// generously wide (8 kHz telephony through 384 kHz pro audio), but not
 /// unbounded. rubato's FFT resampler sizes its buffers by
@@ -664,5 +716,57 @@ mod tests {
         let err = decode_raw_pcm(EndlessZeros, 16_000, 1, RawSampleFormat::S16Le).unwrap_err();
         assert!(matches!(err, AudioError::TooLarge));
         assert_eq!(err.exit_code(), 1);
+    }
+
+    /// Builds one second of a sine wave at `amplitude`, at `TARGET_SAMPLE_RATE`.
+    fn sine_at(amplitude: f32) -> Vec<f32> {
+        (0..TARGET_SAMPLE_RATE)
+            .map(|i| {
+                let t = i as f32 / TARGET_SAMPLE_RATE as f32;
+                amplitude * (2.0 * std::f32::consts::PI * 440.0 * t).sin()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn all_zero_samples_are_silent() {
+        assert!(is_silent(&vec![0.0f32; TARGET_SAMPLE_RATE as usize]));
+    }
+
+    #[test]
+    fn ordinary_speech_level_is_not_silent() {
+        assert!(!is_silent(&sine_at(0.1)));
+    }
+
+    #[test]
+    fn very_low_level_signal_is_silent() {
+        assert!(is_silent(&sine_at(1e-4)));
+    }
+
+    /// Pins that the gate is not over-aggressive: −45 dBFS is well under
+    /// real quiet speech (the quietest fixture measures 1.1377e-1) but a
+    /// sine of that amplitude still has an RMS of ~3.5e-3, ~3.5x above the
+    /// 1e-3 threshold, so it must not trip the gate.
+    #[test]
+    fn low_but_real_signal_is_not_silent() {
+        assert!(!is_silent(&sine_at(5e-3)));
+    }
+
+    /// The whole reason for a windowed max rather than an overall RMS: a
+    /// short burst of real amplitude surrounded by silence must not be
+    /// averaged away by the quiet samples around it.
+    #[test]
+    fn a_short_burst_amid_silence_is_not_silent() {
+        let mut samples = vec![0.0f32; TARGET_SAMPLE_RATE as usize];
+        let burst = sine_at(0.1);
+        let start = samples.len() / 2;
+        samples[start..start + burst.len().min(1600)]
+            .copy_from_slice(&burst[..burst.len().min(1600)]);
+        assert!(!is_silent(&samples));
+    }
+
+    #[test]
+    fn empty_slice_is_silent() {
+        assert!(is_silent(&[]));
     }
 }

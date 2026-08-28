@@ -379,6 +379,16 @@ or started. `2` means a bad flag value, an unknown model name, or (mirroring
 kokoro-rs's stdin rule above) no `PATH` given while stdin is a terminal.
 `130` is Ctrl-C.
 
+Silent audio needs its own gate to actually get to exit 1: the real
+Parakeet model doesn't reliably return an empty transcript on silence, it
+hallucinates a word or two ("Okay.", observed on 1 s of digital silence)
+instead. Trusting the recognizer's output alone would let that hallucinated
+text out at exit 0, which is worse than an empty transcript at exit 1 —
+mesa's driver would treat it as something the user actually said. So auris
+runs a cheap energy gate over the decoded samples before the recognizer is
+reached at all (`audio::is_silent`), and exits `NOTHING_TRANSCRIBED`
+directly when nothing but near-zero signal arrived, model or no model.
+
 The consequence for mesa: a nonzero exit means "there is no transcript," the
 same rule `speech.rs` already applies to kokoro-rs — a failed render is not
 data, it is an `Err` the API answers `unavailable` with. auris's driver

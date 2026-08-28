@@ -171,34 +171,26 @@ fn stereo_44100_resamples_to_the_same_transcript_as_plain() {
 }
 
 /// README ("Exit codes") documents silence as exit 1, NOTHING_TRANSCRIBED.
-/// Run for real, against a real 1 s all-zero-sample wav, the real model
-/// instead returns "Okay." at exit 0 — a hallucination, not "no transcript"
-/// — verified deterministic across repeated runs. `tests/errors.rs`'s
-/// `silence_is_nothing_transcribed` looks like it already covers this, but
-/// it never actually exercises the model: its helper
-/// (`model_dir_for_silence_test`) requires a literal `bpe.vocab` file, and
-/// `spike/models/parakeet` only ships `bpe_synth.vocab`, so on this machine
-/// that test always skips and its exit-1 assertion has never once run
-/// against a real recognizer. This test therefore characterises the real
-/// model's current behaviour — it does NOT bless it as correct or claim the
-/// README is wrong to document exit 1 as the intended contract. A reader
-/// landing here should not conclude the README's contract is what actually
-/// happens; that gap is a separate, open question, not resolved by this
-/// test.
+/// This used to fail: the real model hallucinates "Okay." on 1 s of
+/// digital silence rather than returning nothing, which slipped past the
+/// old post-decode `text.trim().is_empty()` check and exited 0. That's why
+/// `src/audio.rs::is_silent` — an energy gate — now runs before the
+/// recognizer is ever reached; silent audio never gets a chance to
+/// hallucinate anything.
 #[test]
-fn silence_hallucinates_rather_than_yielding_no_transcript() {
+fn silence_yields_no_transcript() {
     let Some(model_dir) = spike_model_dir() else {
         return;
     };
     let tmp = symlinked_model_dir(&model_dir);
     let out = transcribe(tmp.path(), &fixtures_dir().join("silence.wav"));
     let text = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
     eprintln!("silence.wav: exit={:?} stdout={text:?}", out.status.code());
-    assert_eq!(out.status.code(), Some(0), "stderr: {:?}", out.stderr);
-    assert!(
-        normalise(&text).contains("okay"),
-        "expected the known 'Okay.' hallucination on silence, got {text:?}"
-    );
+    assert_eq!(out.status.code(), Some(1));
+    assert!(text.is_empty(), "expected empty stdout, got {text:?}");
+    assert!(stderr.contains("nothing transcribed"));
+    assert!(stderr.contains("no speech"));
 }
 
 /// `not-audio.bin` is a clean, single-line error (`src/audio.rs`'s

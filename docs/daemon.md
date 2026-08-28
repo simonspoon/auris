@@ -53,7 +53,11 @@ WAV, a bad `--vocabulary-file`, or anything else that isn't already valid
 `f32` samples and a plain hotwords string. This is also why the daemon's
 error surface is narrower than the client's: it can refuse a sample count or
 a model mismatch, but it cannot produce a "bad audio format" error, because
-audio in that sense never reaches it.
+audio in that sense never reaches it. The same is true of silence: the
+energy gate (`audio::is_silent`) also runs client-side, on the decoded
+samples, before a connection is even opened — a silent request never
+reaches the daemon socket at all, and the daemon never spends a decode on
+it.
 
 `MAX_TRANSCRIBE_SAMPLES` (one hour of 16 kHz mono, `src/daemon.rs:71-77`) is
 a sanity bound on the framing — it exists so a bogus or hostile `samples`

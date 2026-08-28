@@ -12,9 +12,10 @@ mesa's speech driver (`mesa/src/core/speech.rs`) as the primary consumer.
 
 ## Status: partial
 
-Built and tested today: audio input (`src/audio.rs`), the recognizer
-(`src/engine.rs`), the vocabulary term list (`src/vocabulary.rs`), the
-one-shot transcribe path (`src/cli.rs`), and the daemon and its client
+Built and tested today: audio input (`src/audio.rs`), an energy gate ahead
+of the recognizer for silent audio (`audio::is_silent`, task 958), the
+recognizer (`src/engine.rs`), the vocabulary term list (`src/vocabulary.rs`),
+the one-shot transcribe path (`src/cli.rs`), and the daemon and its client
 (`src/daemon.rs`, task 951 — `auris serve` / `status` / `stop`, documented in
 `docs/daemon.md`). Not built: model downloading and sha256 verification (so
 `auris serve` does not yet fetch a missing model), VAD segmentation and
@@ -103,3 +104,9 @@ them — decide which, don't let them silently drift.
   vocabulary term list, by contrast, is normally a per-request property served
   cheaply against the already-loaded recognizer — see README "The daemon" for
   when a vocabulary change instead forces a full reload.
+- **Silent audio never reaches the recognizer.** The real model hallucinates
+  words on digital silence instead of returning nothing, so
+  `audio::is_silent` gates on the decoded samples before the recognizer is
+  invoked — client-side, so it also covers the daemon path (README "Exit
+  codes", `docs/daemon.md`). It is a fixed-threshold energy check, not VAD;
+  `docs/streaming.md`'s Silero VAD segmentation supersedes it later.
