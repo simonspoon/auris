@@ -241,7 +241,12 @@ fn double_sigint_interrupts_a_blocked_read() {
     use std::os::unix::process::ExitStatusExt;
     use std::time::{Duration, Instant};
 
-    const MAX_ATTEMPTS: u32 = 4;
+    // Eight rather than a token two or three: on a loaded machine a single
+    // attempt loses this race far more often than not (observed 8 runs in 10
+    // needing a retry, one needing three), so a small ceiling would fail a
+    // correct binary on a slow CI box. An attempt costs ~1.5 s and only the
+    // losing ones are paid.
+    const MAX_ATTEMPTS: u32 = 8;
 
     for attempt in 1..=MAX_ATTEMPTS {
         let home = tempfile::tempdir().expect("tempdir");
