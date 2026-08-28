@@ -47,6 +47,29 @@ nobody should split it into a workspace on reflex.
 One binary, nothing bundled inside it: everything auris needs at runtime is
 either linked into the executable or downloaded once into `~/.cache/auris`.
 
+**auris is not published anywhere yet — no remote, no release, no formula.**
+`simonspoon/tap` (`Formula/khora.rb`, `loki.rb`, `mesa.rb`, `qorvex.rb`, and
+a dozen more) is where it will live, in the shape those formulas already
+have — a prebuilt binary per platform off a GitHub release — but neither the
+release nor the formula exists today. Building from source, from the repo
+directly, is the only install path:
+
+```sh
+scripts/install.sh
+```
+
+Run from the repo root, that builds in release mode and copies the binary to
+`~/.local/bin`, the same `PREFIX`/`BINDIR` overrides kokoro-rs's installer
+takes:
+
+```sh
+PREFIX=/usr/local scripts/install.sh
+BINDIR=/opt/bin scripts/install.sh
+```
+
+To build without installing, use `cargo build --release`; the binary lands in
+`target/release/auris`.
+
 ### Build prerequisites
 
 **Rust and a linker. That is all.**
@@ -501,6 +524,51 @@ mechanism. Full protocol and reasoning: `docs/streaming.md`.
 corrected text — so reading to EOF and parsing the last line is a correct
 reader on its own. A single-utterance recording produces one `segment` line
 whose text equals the `transcript` line's.
+
+## Verification
+
+**auris's central claim is the vocabulary — biasing, plus a correction pass
+not yet in the crate, make mesa's own names legible where a browser's speech
+recognizer garbles them. The receipts are `BENCHMARK.md`**, measured against
+40 utterances of mesa dictation (`bench/corpus/`) — task ids, mesa's own tool
+names, half-thoughts, four words to 22 seconds of unbroken rambling — not
+read passages:
+
+| Config | Name F1 | WER |
+| --- | --- | --- |
+| auris, no vocabulary | 62.2% | 6.52% |
+| **auris + vocabulary biasing (what ships today)** | **69.2%** | **6.32%** |
+| auris + biasing + correction pass (not in the crate — `spike/harness/vocab_correct.py`) | 89.1% | 4.89% |
+
+Per-term is where the real story is. `khora` never recovers from biasing
+alone — 0.0% F1 across eight occurrences, the same zero the original 8-fixture
+spike found, unmoved by a corpus five times larger. What biasing does instead
+is decide what the model produces in `khora`'s place ("qora", not something
+unrecoverable), and the correction pass repairs that to 76.9%. `qorvex` moves
+0.0% → 50.0% → 90.9% the same way. Full per-term table, the punctuation
+numbers, and the latency distribution measured against `docs/latency.md`'s
+300 ms budget (94.2% of warm calls cost nothing at all; every `--no-daemon`
+call breached the 2300 ms ceiling): `BENCHMARK.md`.
+
+Two things that table deliberately does not paper over:
+
+- **The Web Speech baseline is NOT MEASURED.** `bench/harness/webspeech/` has
+  a written, committed method, but `SpeechRecognition` opens the system
+  microphone directly and bypasses `getUserMedia` — Chrome's fake audio device
+  feeds a WAV in (measured, peak RMS 0.3334) and the recognizer still ends in
+  `no-speech`. Closing that gap needs an OS-level loopback (`blackhole-2ch`)
+  that this measurement run had no admin rights to install; tracked as task
+  964. Until it lands, "auris beats the browser" is an unmeasured claim.
+- **The corpus is synthetic** — macOS `say`, five voices, three rates, not
+  the owner's own dictated voice. `BENCHMARK.md` treats the absolute numbers
+  as a floor, not a prediction; relative orderings (biasing vs. correction,
+  warm vs. cold) are the trustworthy part. `bench/corpus/record.sh`
+  re-records the same 40 sentences in a real voice.
+
+The 83.3% name-F1 / 4.0% WER figure in "The daemon" above is the original
+8-fixture spike measurement that fixed `hotwords_score` at 3.0; that config is
+unchanged. `BENCHMARK.md` is the same claim re-measured at five times the
+corpus size, and is the fuller record.
 
 ## Notes
 
