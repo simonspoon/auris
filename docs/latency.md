@@ -194,7 +194,9 @@ session — and that is the right trade against holding ~1.5 GB resident
 This confirms rather than changes the direction of task 925 (the CLI
 contract, already a thin client over a persistent daemon) and task 933
 (bind sherpa-onnx and hold the recognizer warm); the contribution here is
-the *number* that makes it non-negotiable, and the mic-open trigger.
+the *number* that makes it non-negotiable, and the mic-open trigger. See
+`docs/daemon.md` (task 951) for how that persistent daemon is actually
+built and its measured RTF.
 
 ## Decoding before silence — asked and answered
 
@@ -233,4 +235,5 @@ the fix is to reconcile `min_silence_duration` with the setting, as
   fixtures (`spike/fixtures/record.sh`). The 2x safety factor stands in
   for that measurement and should be replaced by it.
 - The daemon's idle retirement, which is a memory question, not a latency
-  one.
+  one — see `docs/daemon.md`'s `IDLE_TIMEOUT` for the number and its own
+  "not decided" note on whether it is the right one.

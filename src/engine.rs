@@ -6,8 +6,9 @@
 //! Construction is deliberately separated from decoding: [`Recognizer::load`]
 //! pays the ~4 s model-load cost once, and [`Recognizer::decode`] /
 //! [`Recognizer::decode_with_hotwords`] are cheap, repeatable, and take
-//! `&self` so one recognizer can serve many requests — the daemon a later
-//! task builds shares this one instance across calls.
+//! `&self` so one recognizer can serve many requests — the daemon
+//! (`src/daemon.rs`, `docs/daemon.md`) shares this one instance across
+//! calls.
 
 use std::path::{Path, PathBuf};
 
@@ -168,8 +169,8 @@ fn path_str(path: &Path) -> String {
 }
 
 /// A loaded Parakeet recognizer, held warm for the process lifetime.
-/// `Send + Sync` (inherited from `sherpa_onnx::OfflineRecognizer`) so a
-/// later daemon can share one instance across concurrent requests.
+/// `Send + Sync` (inherited from `sherpa_onnx::OfflineRecognizer`) so the
+/// daemon can share one instance across concurrent requests.
 pub struct Recognizer {
     inner: OfflineRecognizer,
 }
@@ -506,8 +507,77 @@ mod tests {
         );
     }
 
-    /// The daemon a later task builds shares one `Recognizer` across
-    /// concurrent requests, which requires it to be `Send + Sync`. This is
+    /// Task 951's decode-only warm RTF, measured the way `spike/RESULTS.md`
+    /// SS6/SS4 measured its 0.082 baseline: one `Recognizer::load`, then
+    /// decode all 8 fixtures with the production per-word hotwords string,
+    /// summing decode time only (no process spawn, no socket round-trip, no
+    /// audio decode/resample) and dividing by the 45.429 s total fixture
+    /// audio. This is the number directly comparable to that 0.082 — the
+    /// end-to-end client/daemon RTF measured by
+    /// `spike/harness/warm_daemon_bench.sh` is a different, larger number by
+    /// design (it also pays process spawn and IPC), and is not what this
+    /// test checks.
+    /// `#[ignore]` on purpose: this reports a wall-clock number and asserts
+    /// nothing, because a timing assertion here would be measuring the
+    /// machine, not auris. Run under the default parallel `cargo test` —
+    /// alongside the other tests that each load their own 1.5 GB
+    /// recognizer — the same decode reads 0.4523 RTF instead of 0.0688,
+    /// purely from CPU contention. The *invariant* (the load is paid once,
+    /// later decodes are cheap) is asserted relatively, against the load
+    /// time measured in the same process, by
+    /// `daemon::tests::second_decode_is_fast_after_the_one_time_load`. This
+    /// is the measurement instrument, run alone on a quiet machine:
+    ///
+    /// ```text
+    /// cargo test --release decode_only_warm_rtf -- --ignored --nocapture
+    /// ```
+    #[test]
+    #[ignore = "measurement, not an assertion: run alone on a quiet machine"]
+    fn decode_only_warm_rtf_matches_spike_methodology() {
+        let Some(model_dir) = spike_model_dir() else {
+            return;
+        };
+        let tmp = symlinked_model_dir(&model_dir);
+        let cfg = EngineConfig {
+            model_dir: tmp.path().to_path_buf(),
+            ..Default::default()
+        };
+        let recognizer = Recognizer::load(&cfg).expect("load");
+
+        let hotwords_path =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("spike/fixtures/hotwords.txt");
+        let hotwords_contents =
+            std::fs::read_to_string(&hotwords_path).expect("read fixture hotwords file");
+        let inline_hotwords = hotwords_contents
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .collect::<Vec<_>>()
+            .join("/");
+
+        let ids = ["u01", "u02", "u03", "u04", "u05", "u06", "u07", "u08"];
+        let mut total_audio_secs = 0.0;
+        let mut total_decode_secs = 0.0;
+        for id in ids {
+            let samples = decode_fixture(&format!("{id}.wav"));
+            total_audio_secs += samples.len() as f64 / crate::audio::TARGET_SAMPLE_RATE as f64;
+            let start = Instant::now();
+            recognizer
+                .decode_with_hotwords(&samples, &inline_hotwords)
+                .unwrap_or_else(|e| panic!("decode {id}: {e}"));
+            total_decode_secs += start.elapsed().as_secs_f64();
+        }
+
+        let rtf = total_decode_secs / total_audio_secs;
+        eprintln!(
+            "decode-only warm RTF: {rtf:.4} ({total_decode_secs:.3}s decode / \
+             {total_audio_secs:.3}s audio; spike baseline: 0.082)"
+        );
+    }
+
+    /// The daemon shares one `Recognizer` across connections, which
+    /// requires it to be `Send + Sync` — though today's accept loop is
+    /// sequential (`docs/daemon.md`), not actually concurrent. This is
     /// a compile-time check, not a runtime assertion — the crate already
     /// declares `OfflineRecognizer: Send + Sync`, so `Recognizer` inherits
     /// it, but pin it here so a future change to this struct can't silently

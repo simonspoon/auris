@@ -73,7 +73,8 @@ kokoro :3.0
   652 MB int8 encoder takes ~4 s. Spawned per utterance, parakeet's effective RTF
   is 0.634 and the whole speed argument evaporates. auris must hold a loaded
   recognizer across utterances; a one-shot `audio in, text out` binary that exits
-  each time is not compatible with this decision. See tasks 925 and 926.
+  each time is not compatible with this decision. See tasks 925 and 926, and
+  `docs/daemon.md` for how the persistent process (task 951) actually works.
 - **~1.5 GB resident**, against 338 MB for base.en+prompt. Acceptable on a 32 GB
   box, and it is a fixed cost paid once by a daemon rather than per utterance.
 - **English only** (plus 24 European languages in this model), which mesa is.

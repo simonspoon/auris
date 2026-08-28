@@ -10,13 +10,18 @@ loaded recognizer. It is the mirror of kokoro-rs (text → audio); auris does
 audio → text, and both are meant to sit on either side of the same pipe, with
 mesa's speech driver (`mesa/src/core/speech.rs`) as the primary consumer.
 
-## Status: skeleton
+## Status: partial
 
-The CLI (`src/cli.rs`, `src/main.rs`, `src/lib.rs`) is a placeholder. The
-invariants below describe what auris **must** do once implemented — read from
-`README.md`, the 516-line contract that was written before the code — not
-what it currently does. Do not assume any of this is built; check the source
-before relying on it.
+Built and tested today: audio input (`src/audio.rs`), the recognizer
+(`src/engine.rs`), the vocabulary term list (`src/vocabulary.rs`), the
+one-shot transcribe path (`src/cli.rs`), and the daemon and its client
+(`src/daemon.rs`, task 951 — `auris serve` / `status` / `stop`, documented in
+`docs/daemon.md`). Not built: model downloading and sha256 verification (so
+`auris serve` does not yet fetch a missing model), VAD segmentation and
+streaming (`docs/streaming.md`), and post-ASR correction
+(`docs/correction.md`). The invariants below describe what auris **must** do,
+read from `README.md` — the contract written before the code — not what it
+currently does. Check the source before relying on any of it.
 
 ## Commands
 

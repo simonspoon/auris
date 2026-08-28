@@ -1,10 +1,13 @@
-//! The one-shot transcribe path: audio in (stdin or `PATH`), transcript out
-//! on stdout (README "Synopsis", "The contract"). This module is the client
-//! half of auris; it knows how to read audio, resolve a model, load and run
-//! [`crate::engine::Recognizer`] once, and shape the result the way
-//! `--format` says. It does not talk to a daemon — that's `--no-daemon`'s
-//! *current* behaviour for every invocation, until `auris serve` (task 951)
-//! gives `-m`/`--socket`/`--no-daemon` something real to mean.
+//! The transcribe path: audio in (stdin or `PATH`), transcript out on
+//! stdout (README "Synopsis", "The contract"). This module is the client
+//! half of auris; it knows how to read audio, resolve a model, and shape the
+//! result the way `--format` says. By default it talks to the persistent
+//! daemon ([`crate::daemon`]) instead of loading
+//! [`crate::engine::Recognizer`] itself, auto-starting one if none is
+//! listening (README "The daemon"); `--no-daemon` keeps the original
+//! in-process path for one-off use and for debugging the daemon path
+//! itself. This module also owns the `serve` / `status` / `stop`
+//! subcommands, which are thin wrappers around [`crate::daemon`].
 
 use std::io::{IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
@@ -15,6 +18,7 @@ use std::time::Instant;
 use clap::{Parser, ValueEnum};
 
 use crate::audio;
+use crate::daemon;
 use crate::engine::{EngineConfig, Recognizer};
 use crate::vocabulary::Vocabulary;
 
@@ -53,6 +57,10 @@ pub enum Format {
     version
 )]
 pub struct Args {
+    /// `serve` / `status` / `stop` — omitted for the default transcribe path
+    #[command(subcommand)]
+    command: Option<Command>,
+
     /// Audio file to transcribe (default: read stdin)
     path: Option<PathBuf>,
 
@@ -77,17 +85,12 @@ pub struct Args {
     #[arg(long)]
     list_models: bool,
 
-    // No-op today: every call already runs in-process; `auris serve` is
-    // what will give this flag a daemon to opt out of.
     /// Load the recognizer in-process instead of talking to a daemon
     #[arg(long)]
-    #[allow(dead_code)]
     no_daemon: bool,
 
-    // No-op today, for the same reason as --no-daemon above.
     /// Daemon socket path (default $AURIS_HOME/auris.sock)
     #[arg(long, value_name = "PATH")]
-    #[allow(dead_code)]
     socket: Option<PathBuf>,
 
     /// Suppress the progress line
@@ -95,8 +98,57 @@ pub struct Args {
     quiet: bool,
 }
 
+#[derive(clap::Subcommand)]
+enum Command {
+    /// Start (or become) the daemon
+    Serve(ServeArgs),
+    /// Is a daemon running, with what model
+    Status(SocketArgs),
+    /// Ask the daemon to exit
+    Stop(SocketArgs),
+}
+
+#[derive(clap::Args)]
+struct ServeArgs {
+    /// Model to use: a name from --list-models, or a path to a model directory
+    #[arg(short = 'm', long = "model", value_name = "NAME")]
+    model: Option<String>,
+
+    /// Daemon socket path (default $AURIS_HOME/auris.sock)
+    #[arg(long, value_name = "PATH")]
+    socket: Option<PathBuf>,
+
+    /// Suppress the progress line
+    #[arg(short, long)]
+    quiet: bool,
+
+    // Accepted for symmetry with the bare-invocation flag of the same name;
+    // model downloading is not implemented in either path yet (see the
+    // missing-default-model message in `run_serve`).
+    /// Fail rather than fetch a missing model on a real run
+    #[arg(long)]
+    #[allow(dead_code)]
+    no_download: bool,
+}
+
+#[derive(clap::Args)]
+struct SocketArgs {
+    /// Daemon socket path (default $AURIS_HOME/auris.sock)
+    #[arg(long, value_name = "PATH")]
+    socket: Option<PathBuf>,
+}
+
 pub fn main() -> i32 {
     run(Args::parse())
+}
+
+fn run(args: Args) -> i32 {
+    match args.command {
+        Some(Command::Serve(serve_args)) => run_serve(serve_args),
+        Some(Command::Status(socket_args)) => run_status(socket_args),
+        Some(Command::Stop(socket_args)) => run_stop(socket_args),
+        None => run_transcribe(args),
+    }
 }
 
 /// Turns Ctrl-C into a polled flag rather than an unwind — the recognizer
@@ -227,7 +279,7 @@ fn transcript_line(text: &str) -> String {
     .to_string()
 }
 
-fn run(args: Args) -> i32 {
+fn run_transcribe(args: Args) -> i32 {
     let interrupt = install_interrupt_handler();
     let verbose = !args.quiet && std::io::stderr().is_terminal();
     let home_env = std::env::var("HOME").ok();
@@ -336,42 +388,69 @@ fn run(args: Args) -> i32 {
         return INTERRUPTED;
     }
 
-    if verbose {
-        eprintln!("auris: loading {}", model_dir.display());
-    }
-    let load_start = Instant::now();
-    let recognizer = match Recognizer::load(&EngineConfig {
-        model_dir,
-        ..Default::default()
-    }) {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("auris: {e}");
-            return e.exit_code();
-        }
-    };
-    if verbose {
-        eprintln!("auris: model loaded in {:?}", load_start.elapsed());
-    }
-    if interrupt.load(Ordering::SeqCst) {
-        return INTERRUPTED;
-    }
+    let hotwords_string = vocabulary.as_ref().map(|v| v.hotwords_string());
 
-    let decode_start = Instant::now();
-    let text = match &vocabulary {
-        Some(v) => recognizer.decode_with_hotwords(&samples, &v.hotwords_string()),
-        None => recognizer.decode(&samples),
-    };
-    let text = match text {
-        Ok(t) => t,
-        Err(e) => {
-            eprintln!("auris: {e}");
-            return e.exit_code();
+    // The default path talks to the daemon (README "The daemon"), starting
+    // one if none is listening, so the ~4 s model load is paid once per
+    // daemon lifetime rather than once per call. `--no-daemon` is the
+    // escape hatch that keeps the original in-process behaviour verbatim.
+    let text = if args.no_daemon {
+        if verbose {
+            eprintln!("auris: loading {}", model_dir.display());
+        }
+        let load_start = Instant::now();
+        let recognizer = match Recognizer::load(&EngineConfig {
+            model_dir,
+            ..Default::default()
+        }) {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("auris: {e}");
+                return e.exit_code();
+            }
+        };
+        if verbose {
+            eprintln!("auris: model loaded in {:?}", load_start.elapsed());
+        }
+        if interrupt.load(Ordering::SeqCst) {
+            return INTERRUPTED;
+        }
+
+        let decode_start = Instant::now();
+        let result = match &hotwords_string {
+            Some(h) => recognizer.decode_with_hotwords(&samples, h),
+            None => recognizer.decode(&samples),
+        };
+        let text = match result {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("auris: {e}");
+                return e.exit_code();
+            }
+        };
+        if verbose {
+            eprintln!("auris: decoded in {:?}", decode_start.elapsed());
+        }
+        text
+    } else {
+        let socket_path = args
+            .socket
+            .clone()
+            .unwrap_or_else(|| home.join("auris.sock"));
+        let hotwords = hotwords_string.as_deref().unwrap_or("");
+        match daemon::transcribe_via_daemon(&socket_path, &model_dir, &samples, hotwords) {
+            Ok((text, decode_ms)) => {
+                if verbose {
+                    eprintln!("auris: decoded in {decode_ms:.0}ms");
+                }
+                text
+            }
+            Err(e) => {
+                eprintln!("auris: {e}");
+                return e.code;
+            }
         }
     };
-    if verbose {
-        eprintln!("auris: decoded in {:?}", decode_start.elapsed());
-    }
     if interrupt.load(Ordering::SeqCst) {
         return INTERRUPTED;
     }
@@ -402,6 +481,89 @@ fn run(args: Args) -> i32 {
     let _ = out.flush();
 
     OK
+}
+
+/// `auris serve` (README "The daemon", "Synopsis"): resolves the model the
+/// same way `run_transcribe` does, then hands off to
+/// [`daemon::serve`] for the accept loop.
+fn run_serve(args: ServeArgs) -> i32 {
+    let verbose = !args.quiet && std::io::stderr().is_terminal();
+    let home_env = std::env::var("HOME").ok();
+    let home = auris_home(home_env.as_deref());
+
+    let env_model = std::env::var("AURIS_MODEL").ok();
+    let source = resolve_model_source(
+        args.model.as_deref(),
+        env_model.as_deref(),
+        &home,
+        home_env.as_deref(),
+    );
+    let model_dir = match source {
+        ModelSource::Default(path) => {
+            if !model_dir_is_complete(&path) {
+                eprintln!("auris: missing {}", path.display());
+                eprintln!(
+                    "auris: model download is not implemented yet; pass -m with a complete model directory"
+                );
+                return NOTHING_TRANSCRIBED;
+            }
+            path
+        }
+        // A name or path the caller gave explicitly: let Recognizer::load's
+        // own validation do the checking, same as run_transcribe.
+        ModelSource::Explicit(path) => path,
+    };
+
+    let socket_path = args
+        .socket
+        .clone()
+        .unwrap_or_else(|| home.join("auris.sock"));
+
+    daemon::serve(daemon::ServeConfig {
+        model_dir,
+        socket_path,
+        verbose,
+    })
+}
+
+/// `auris status` (README "The daemon", "Synopsis"): prints the daemon's
+/// status line to stdout — it is the answer the caller asked for, not
+/// progress (CLAUDE.md "stdout"). No daemon reachable is exit 1, mirroring
+/// README "Exit codes"' "a daemon that could not be reached or started".
+fn run_status(args: SocketArgs) -> i32 {
+    let home_env = std::env::var("HOME").ok();
+    let home = auris_home(home_env.as_deref());
+    let socket_path = args.socket.unwrap_or_else(|| home.join("auris.sock"));
+
+    match daemon::status(&socket_path) {
+        Ok(info) => {
+            println!(
+                "model {}  pid {}  uptime {}s  requests {}",
+                info.model, info.pid, info.uptime_secs, info.requests
+            );
+            OK
+        }
+        Err(_) => {
+            eprintln!("auris: no daemon on {}", socket_path.display());
+            NOTHING_TRANSCRIBED
+        }
+    }
+}
+
+/// `auris stop` (README "The daemon", "Synopsis"): asks the daemon to exit.
+/// No daemon reachable is exit 1, same as [`run_status`].
+fn run_stop(args: SocketArgs) -> i32 {
+    let home_env = std::env::var("HOME").ok();
+    let home = auris_home(home_env.as_deref());
+    let socket_path = args.socket.unwrap_or_else(|| home.join("auris.sock"));
+
+    match daemon::stop(&socket_path) {
+        Ok(()) => OK,
+        Err(_) => {
+            eprintln!("auris: no daemon on {}", socket_path.display());
+            NOTHING_TRANSCRIBED
+        }
+    }
 }
 
 #[cfg(test)]

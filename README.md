@@ -406,7 +406,7 @@ mirroring kokoro-rs's `KOKORO_HOME` convention), overridable with
 `--socket`. A plain `auris` invocation is the client: it connects to that
 socket, and if nothing is listening, starts a daemon itself before
 proceeding — a caller never has to run `auris serve` by hand for auris to
-behave as a fast per-call filter. An idle daemon exits after a period with no
+behave as a fast per-call filter. An idle daemon exits after 300 s with no
 requests, so a warm ~1.5 GB process is not held forever on a machine that
 transcribes once and then goes quiet.
 
