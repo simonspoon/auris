@@ -39,6 +39,257 @@ speech back with auris, `-q` and piped stdio and all. The ~4 s load is paid
 once, by `auris serve`; every other invocation is a socket write and a
 socket read.
 
+## Install
+
+One binary, nothing bundled inside it: everything auris needs at runtime is
+either linked into the executable or downloaded once into `~/.cache/auris`.
+
+### Build prerequisites
+
+**Rust and a linker. That is all.**
+
+`sherpa-onnx-sys` 1.13.6's build.rs does not compile C++ (build.rs:117-211, fn
+`download_prebuilt_libs`): it downloads a prebuilt archive from
+`https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.6/sherpa-onnx-v1.13.6-osx-x64-static-lib.tar.bz2`
+(the name is chosen per-platform at build.rs:225-279) and caches it under
+`$CARGO_TARGET_DIR/sherpa-onnx-prebuilt/`. Its own build-dependencies are
+`ureq`, `tar`, `bzip2` — to fetch and unpack, not to compile. So there is **no
+cmake, no C++ compiler, no libclang** — the three things kokoro-rs's install
+section requires, because kokoro-rs builds espeak-ng from source and auris
+builds nothing from source. On macOS the Xcode command line tools alone are
+enough: a linker, `libc++`, and the `Foundation` framework (build.rs:298-301).
+
+Verified today: a probe crate depending on `sherpa-onnx = "=1.13.6"` with
+default features built in 32 s on this host, invoking only rustc/cargo plus
+one HTTPS GET to github.com. The build needs network once, for that archive —
+`SHERPA_ONNX_ARCHIVE_DIR` points at a locally cached copy of it
+(build.rs:144-154), and `SHERPA_ONNX_LIB_DIR` skips the download entirely and
+links an existing lib directory (build.rs:102-112); either makes an offline
+build possible.
+
+The dependency is pinned exact, `sherpa-onnx = "=1.13.6"`: the crate version
+selects which prebuilt native archive is downloaded, so it pins the C++ and
+ONNX Runtime builds too, not just the Rust API.
+
+### ONNX Runtime
+
+**There is nothing to do. ONNX Runtime is statically linked into the auris
+binary, so auris has no `ORT_DYLIB_PATH`, no runtime dylib, and no download
+for it.**
+
+The crate's default `static` feature emits
+`cargo:rustc-link-lib=static=onnxruntime` among 13 static libs
+(build.rs:14-28, :286-304); the downloaded archive carries
+`lib/libonnxruntime.a`. Verified empirically: `otool -L` on the built probe
+binary lists only `/usr/lib/libc++.1.dylib`, `Foundation`, `libSystem.B.dylib`
+and `CoreFoundation` — no `libonnxruntime.dylib`.
+
+This is where auris diverges from kokoro-rs, and why it is simpler: kokoro-rs
+downloads a 40 MB `libonnxruntime.1.23.2.dylib` into its cache on first run
+and sets `ORT_DYLIB_PATH` to point at it (`models.rs:145-165`), because the
+`ort` crate uses its `load-dynamic` feature. auris links the runtime instead,
+so the only thing that ever lands in the cache is the model itself. The
+non-default `shared` feature would reintroduce a dylib; auris does not use it.
+
+### The cache
+
+**`$AURIS_HOME`, defaulting to `$HOME/.cache/auris`, computed exactly as
+kokoro-rs computes its own** (`models.rs:65-71`: read the env var, else
+`$HOME/.cache/<name>`, falling back to `.` when `$HOME` is unset — no `dirs`
+crate).
+
+```
+~/.cache/auris/
+  auris.sock                       # the daemon's socket (see "The daemon")
+  models/
+    parakeet-tdt-0.6b-v2-int8/
+      encoder.int8.onnx
+      decoder.int8.onnx
+      joiner.int8.onnx
+      tokens.txt
+      bpe.vocab                    # generated, not downloaded
+```
+
+kokoro-rs's model is one file, so `KOKORO_MODEL` is a path to a file. A
+parakeet model is four downloaded files plus one generated one that must stay
+together and stay consistent with each other, so auris's unit is a
+**directory**, and every model gets its own under `models/`. More than one
+model may be installed at once; a model directory is only considered installed
+when all five files are present, so a half-finished download is invisible to
+`--list-models` rather than being offered and then failing.
+
+### Environment
+
+| Variable | Meaning |
+| --- | --- |
+| `AURIS_HOME` | The cache directory. Default `$HOME/.cache/auris`. |
+| `AURIS_MODEL` | A path to a model *directory*, overriding the name-based lookup entirely. Tilde-expanded. If it does not exist or is missing one of the four required files, that is a hard error — never a silent fall back to downloading. |
+
+There is no `AURIS_VOICES` and no `ORT_DYLIB_PATH`: auris has no voices, and
+the runtime is linked in. A bad override fails the way kokoro-rs's own does —
+it bails with `KOKORO_MODEL=<path> does not exist` (models.rs:74-102); auris
+does the same with its own name.
+
+### Which model, and `-m`
+
+**`parakeet-tdt-0.6b-v2-int8` is the default and, today, the only model auris
+knows how to fetch.**
+
+`-m` accepts either a name from `--list-models` or a path to a model
+directory. The discriminator is a path separator: an argument containing `/`
+(or beginning with `~`) is a path, anything else is a name looked up under
+`$AURIS_HOME/models/`. An unknown name is a usage error, exit 2. Precedence:
+`-m` beats `AURIS_MODEL` beats the default name. The model is a daemon-startup
+property, not a per-request one — see "The daemon".
+
+### What is downloaded
+
+**The four files, individually, from HuggingFace at a pinned commit — not the
+single `.tar.bz2` that sherpa-onnx publishes.**
+
+Repo: `csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8`, commit
+`1ab9323565ddb038682214b292f588070a538ce2`. URL form:
+`https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8/resolve/1ab9323565ddb038682214b292f588070a538ce2/<file>`
+
+| File | Bytes | sha256 |
+| --- | --- | --- |
+| `encoder.int8.onnx` | 652,184,296 | `a32b12d17bbbc309d0686fbbcc2987b5e9b8333a7da83fa6b089f0a2acd651ab` |
+| `decoder.int8.onnx` | 7,257,753 | `b6bb64963457237b900e496ee9994b59294526439fbcc1fecf705b31a15c6b4e` |
+| `joiner.int8.onnx` | 1,739,080 | `7946164367946e7f9f29a122407c3252b680dbae9a51343eb2488d057c3c43d2` |
+| `tokens.txt` | 9,384 | `ec182b70dd42113aff6c5372c75cac58c952443eb22322f57bbd7f53977d497d` |
+
+Total 661,190,513 bytes — call it ~661 MB.
+
+Why not the archive: `sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8.tar.bz2`
+exists as a GitHub release asset under the `asr-models` tag at 482,468,385
+bytes — 27% smaller, and one request instead of four — but **no checksum is
+published for it anywhere**, and the whole point of verification below is that
+a truncated model must be an error rather than a crash. The HuggingFace files
+carry their sha256 as the LFS `oid` in the repo's own API, so each one can be
+verified against a digest the upstream publishes rather than one auris made
+up. That trade — 180 MB of extra transfer, once, for a verifiable download —
+is the one this section makes.
+
+The commit sha rather than `main` is deliberate too: both currently resolve to
+the same bytes, but pinning the commit is what makes "the model does not
+change under people" true rather than hoped for. And all four URLs advertise
+`accept-ranges: bytes`, so a resumed download is possible per file — which
+four files also buy over one archive.
+
+`tokens.txt` is small enough that HuggingFace stores it as a plain git blob
+rather than LFS, so its sha256 is not published by the API — unlike the other
+three, this one is not checked against a digest upstream publishes. The digest
+above was computed from the bytes actually served at that commit, and is
+auris's own pin.
+
+### Getting the model
+
+```sh
+cargo build --release        # the binary; no cmake, no system libraries
+auris serve                  # fetches the model if it is missing, then loads it
+```
+
+There is no separate download flag, and there deliberately is not one:
+`auris serve` is already the process that loads the recognizer, so it is
+already the process that fetches it, and running it once after install is the
+whole install-time fetch step. The daemon it starts idles out on its own (see
+"The daemon"), so this leaves nothing behind — no process to remember to stop.
+`--no-download` is what turns that same command into a check instead of a
+fetch: with it, `auris serve` refuses to fetch a missing model and exits 1.
+
+### Verification
+
+**Every downloaded file is checked against its sha256 before it is put in
+place.**
+
+Downloads stream to `<name>.part` and are renamed into position only after the
+digest matches, mirroring kokoro-rs's atomic write (`models.rs:243-252`) but
+adding the check kokoro-rs does not have — kokoro-rs verifies nothing at all,
+and tests only that the file exists. A mismatch deletes the `.part` and fails
+the run; nothing that failed verification is ever left where a later run would
+trust it.
+
+On load, auris checks byte sizes only, not digests: a stat is free, rehashing
+661 MB is about a second, and a file at the final path can only have got there
+by passing its digest already. The size check is what catches a file truncated
+by something other than auris — a full disk, a manual copy.
+
+The reason for having any of this: an ONNX file that is short or wrong does
+not produce a clean error, it faults somewhere inside the runtime, and a stack
+trace from inside a static ONNX Runtime is not a bug report anyone can act on.
+
+### `bpe.vocab`
+
+**Generated on first install, beside the weights. Never downloaded, never
+committed.**
+
+The model repo ships no sentencepiece vocab, and `docs/engine.md` requires
+one: `bpe_vocab` plus `modeling_unit` are what make per-word hotword boosts
+work at all, and passing `tokens.txt` in its place silently miscalibrates the
+tokenizer. It is a pure function of `tokens.txt`: for a BPE model the piece
+score is the negative merge rank, so line *n* (1-based) of `tokens.txt`
+becomes `<piece> <-(n-1)>`. The spike's file was produced by `awk '{printf "%s
+%d\n", $1, -NR+1}' tokens.txt`, and generating it in auris reproduces that
+file byte for byte — verified today against
+`spike/models/parakeet/bpe_synth.vocab`, 1025 lines, `<unk> 0` first and
+`<blk> -1024` last.
+
+Committing it was rejected: it is derived data, it is only correct for the
+`tokens.txt` it came from, and a committed copy would survive a model swap
+that invalidated it. Generating it from the file that was just checksummed
+makes that failure impossible instead of merely unlikely.
+
+Generation is local, so `--no-download` does not prevent it — the same
+exemption kokoro-rs makes for its espeak data, which `ensure_espeak_data()`
+unpacks regardless of the flag (`cli.rs:156`).
+
+### `--no-download`
+
+**`--list-models` never touches the network, with or without the flag.** It
+lists the complete model directories under `$AURIS_HOME/models/` and exits 0 —
+including exiting 0 with empty stdout when nothing is installed. It does not
+resolve a model, start a daemon, load a recognizer, or fetch anything. The
+flag is accepted and changes nothing, because there is nothing for it to
+refuse.
+
+That is a deliberate divergence from kokoro-rs, and this is why: mesa's
+`voices()` (`mesa/src/core/speech.rs:87-110`) runs `kokoro-rs --no-download
+--list-voices` with `.output()`, no timeout at all, and memoizes the answer in
+a `OnceLock` for the life of the process — its own comment says "there is no
+cheap timeout here, so the fix is not to start anything that can hang."
+kokoro-rs then answers that call by loading a full 326 MB ONNX session before
+it even looks at the `--list-voices` flag (`cli.rs:156-169`), and exits 1
+without listing anything if the model is not downloaded yet. mesa reads that
+failure as an empty list. auris will not repeat it: the equivalent call must
+be a directory read that cannot hang and cannot fail merely because no model
+is installed yet.
+
+**A real run with the model missing and `--no-download` given exits 1** —
+`NOTHING_TRANSCRIBED`, the same code the exit-code table gives for a run that
+produced no transcript — with `auris: missing <path>` on stderr and a line
+saying how to fetch it, the shape of kokoro-rs's own message
+(`models.rs:93-99`). No daemon is started and no encoder is loaded.
+
+**Without `--no-download`, a real run fetches what is missing first**, in
+whichever process is about to load the recognizer — `auris serve`, the daemon
+a client auto-starts, or a `--no-daemon` run — with progress on that process's
+stderr only when it is a terminal.
+
+mesa's synthesis path spawns kokoro-rs *without* `--no-download`
+(`speech.rs:163-169`) and never times the child out, so the first render on a
+cold cache blocks on a 394 MB download. The auris equivalent would block on
+661 MB. The model should therefore be fetched once at install time, not on a
+user's first utterance.
+
+### A note on the model name
+
+`parakeet-tdt-0.6b-v2-int8` contains a `.`, and mesa's `is_voice_name`
+(`speech.rs:117-124`) accepts only ASCII alphanumerics, `_` and `-`, so as
+written today mesa would filter that name straight out of a `--list-models`
+answer. The name is kept, because it is the upstream model's name and renaming
+it to dodge a validator would be the wrong repo paying. mesa's model-name
+check must allow `.` — one character, in a check that does not exist yet.
+
 ## Synopsis
 
 ```sh
@@ -135,10 +386,10 @@ landed on stdout, never as the primary signal.
 | Flag | Meaning |
 | --- | --- |
 | `PATH` | Audio file to transcribe (positional). Given, stdin is simply not read; omitted, stdin is read unless it is a terminal. |
-| `-m, --model NAME` | Model to use (default `parakeet-tdt-0.6b-v2-int8`). See `--list-models` for what's on disk. |
+| `-m, --model NAME` | Model to use: a name from `--list-models`, or a path to a model directory (default `parakeet-tdt-0.6b-v2-int8`). |
 | `--vocabulary-file FILE` | Terms for hotword biasing and post-ASR correction, one `term :boost` per line (default: none — biasing and correction both off). Served per-request against the warm recognizer; a change in per-word boosts costs a reload — see "The daemon". |
 | `--format text\|json` | Output shape (default `text`). See `--format json` below. |
-| `--no-download` | Fail rather than fetch a missing model; also never starts the daemon or loads an encoder for `--list-models`. |
+| `--no-download` | Fail rather than fetch a missing model on a real run; `--list-models` is always offline, flag or not. |
 | `--list-models` | Print installed model names, one per line, and exit. |
 | `--no-daemon` | Load the recognizer in-process for this call instead of talking to a daemon; pays the ~4 s load every time. |
 | `--socket PATH` | Daemon socket path (default `$AURIS_HOME/auris.sock`). |

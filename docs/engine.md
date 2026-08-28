@@ -98,7 +98,7 @@ while WER also improves, 4.0% → 2.0%.
   `sherpa-onnx` / `sherpa-onnx-sys` is at the same 1.13.6, published 2026-08-24).
 - Model: `csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8` —
   `encoder.int8.onnx` (652 MB), `decoder.int8.onnx`, `joiner.int8.onnx`,
-  `tokens.txt`, ~633 MB total. Note the repo ships **no** sentencepiece vocab;
+  `tokens.txt`, ~661 MB total. Note the repo ships **no** sentencepiece vocab;
   derive it from `tokens.txt` as above.
 - `OfflineRecognizer::from_transducer` with `model_type="nemo_transducer"` — the
   default `"transducer"` is for k2/icefall exports and does not work with this
