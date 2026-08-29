@@ -13,9 +13,17 @@
 //! listing under `models/` can never observe a partial install — only the
 //! final rename from staging into `models/<name>/` makes it exist there at
 //! all.
+//!
+//! Two concurrent auris processes cold-starting on the same missing model
+//! (or the same missing VAD file) both take this path at once; without
+//! coordination they'd stage into the same deterministic path and clobber
+//! each other. Both entry points below serialize on a blocking advisory
+//! `flock` before touching staging, so the loser simply waits and then finds
+//! the winner's install already complete (README "Verification").
 
 use std::fs::File;
 use std::io::{Read, Write};
+use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
@@ -150,6 +158,86 @@ fn hex_encode(bytes: &[u8]) -> String {
         s.push_str(&format!("{b:02x}"));
     }
     s
+}
+
+/// Holds an open, `flock`ed lock file for as long as a fetch is in
+/// progress. The file itself is never deleted (see [`acquire`]); only the
+/// lock on it is released, by `Drop`, so a second racing process blocked in
+/// `flock(LOCK_EX)` wakes up rather than being left waiting on a lock that
+/// close() would have dropped anyway — being explicit here means the
+/// release isn't relying on that implicit behavior.
+struct FetchLock(File);
+
+impl Drop for FetchLock {
+    fn drop(&mut self) {
+        // SAFETY: `self.0`'s fd is valid for the lifetime of this call.
+        unsafe {
+            libc::flock(self.0.as_raw_fd(), libc::LOCK_UN);
+        }
+    }
+}
+
+/// Blocks until `lock_path` can be locked exclusively, creating it (and its
+/// parent directory) if needed. Lock files are never unlinked — unlinking a
+/// lock file is itself racy, since a second process can still be holding a
+/// lock on the now-unlinked inode while a third creates and locks a fresh
+/// one at the same path — so these are small, permanent fixtures under
+/// `$AURIS_HOME/tmp/`, not cleaned up after use.
+///
+/// Tries a non-blocking lock first so the common uncontended case never
+/// prints anything; only once that fails with `EWOULDBLOCK` does it tell the
+/// user (on stderr, and only when `verbose`, per CLAUDE.md "stderr") why the
+/// process is about to pause, then falls back to a blocking lock.
+fn acquire(lock_path: &Path, verbose: bool, waiting_for: &str) -> Result<FetchLock, ModelError> {
+    if let Some(parent) = lock_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(io_err(format!("failed to create {}", parent.display())))?;
+    }
+    let file = File::options()
+        .create(true)
+        .write(true)
+        .truncate(false)
+        .open(lock_path)
+        .map_err(io_err(format!(
+            "failed to open lock file {}",
+            lock_path.display()
+        )))?;
+    let fd = file.as_raw_fd();
+
+    // SAFETY: `fd` is valid for the duration of each flock(2) call.
+    let try_lock = |flags: i32| loop {
+        let rc = unsafe { libc::flock(fd, flags) };
+        if rc == 0 {
+            return Ok(());
+        }
+        let err = std::io::Error::last_os_error();
+        match err.raw_os_error() {
+            Some(libc::EINTR) => continue,
+            Some(libc::EWOULDBLOCK) => return Err(None),
+            _ => return Err(Some(err)),
+        }
+    };
+
+    match try_lock(libc::LOCK_EX | libc::LOCK_NB) {
+        Ok(()) => return Ok(FetchLock(file)),
+        Err(Some(err)) => {
+            return Err(io_err(format!("failed to lock {}", lock_path.display()))(
+                err,
+            ));
+        }
+        Err(None) => {}
+    }
+
+    if verbose {
+        eprintln!("auris: waiting for another auris to finish downloading {waiting_for}");
+    }
+    match try_lock(libc::LOCK_EX) {
+        Ok(()) => Ok(FetchLock(file)),
+        Err(Some(err)) => Err(io_err(format!("failed to lock {}", lock_path.display()))(
+            err,
+        )),
+        Err(None) => unreachable!("a blocking flock cannot return EWOULDBLOCK"),
+    }
 }
 
 /// The model directory's fixed name under `models/` (README "Which model,
@@ -335,7 +423,23 @@ pub fn ensure_installed(model_dir: &Path, verbose: bool) -> Result<(), ModelErro
     let staging = auris_home
         .join("tmp")
         .join(format!("{}.partial", model_name.to_string_lossy()));
+    let lock_path = auris_home
+        .join("tmp")
+        .join(format!("{}.lock", model_name.to_string_lossy()));
 
+    let _lock = acquire(&lock_path, verbose, &model_name.to_string_lossy())?;
+
+    // A second process could have raced us here and already finished the
+    // install while we were blocked on the lock above — the whole point of
+    // taking it. Re-check now that we hold it exclusively: if the winner
+    // already completed `model_dir`, we're the loser and simply no-op.
+    if dir_is_complete(model_dir) {
+        return Ok(());
+    }
+
+    // Any staging directory found here is genuinely stale, not a live
+    // install in progress — no other process can be writing to it while we
+    // hold the lock, so it's safe to discard.
     if staging.exists() {
         std::fs::remove_dir_all(&staging).map_err(io_err(format!(
             "failed to clean up stale {}",
@@ -378,10 +482,22 @@ pub fn vad_model_path(auris_home: &Path) -> PathBuf {
 /// single file living directly under `$AURIS_HOME`, not inside `models/`.
 pub fn ensure_vad_installed(auris_home: &Path, verbose: bool) -> Result<(), ModelError> {
     let path = vad_model_path(auris_home);
-    let already_installed = std::fs::metadata(&path)
-        .map(|m| m.len() == VAD_FILE.bytes)
-        .unwrap_or(false);
-    if already_installed {
+    let is_installed = || {
+        std::fs::metadata(&path)
+            .map(|m| m.len() == VAD_FILE.bytes)
+            .unwrap_or(false)
+    };
+    if is_installed() {
+        return Ok(());
+    }
+
+    let lock_path = auris_home.join("tmp").join("silero_vad.lock");
+    let _lock = acquire(&lock_path, verbose, VAD_FILENAME)?;
+
+    // Same race as ensure_installed: a concurrent process may have finished
+    // downloading the VAD file while we were blocked on the lock. Re-check
+    // now that we hold it exclusively before streaming over it again.
+    if is_installed() {
         return Ok(());
     }
 
@@ -484,6 +600,134 @@ mod tests {
         // would fail — the fact that this returns Ok(()) proves the
         // completeness check short-circuited before any download.
         ensure_installed(&model_dir, false).unwrap();
+
+        // The fast path must stay lock-free in the uncontended case: taking
+        // a lock at all would mean creating (and forever keeping) a lock
+        // file for every already-installed model on every startup.
+        let lock_path = tmp.path().join("tmp").join("some-model.lock");
+        assert!(!lock_path.exists());
+    }
+
+    #[test]
+    fn acquire_excludes_a_second_non_blocking_attempt_until_dropped() {
+        let tmp = tempfile::tempdir().unwrap();
+        let lock_path = tmp.path().join("tmp").join("model.lock");
+
+        let guard = acquire(&lock_path, false, "test").unwrap();
+
+        // A second, independently-opened handle on the same lock file must
+        // fail non-blocking with EWOULDBLOCK while `guard` holds the lock —
+        // this is flock's actual exclusion, not just Rust-level borrowing,
+        // so it's exercised with a raw libc call against a fresh fd.
+        let second = File::options()
+            .create(true)
+            .write(true)
+            .truncate(false)
+            .open(&lock_path)
+            .unwrap();
+        let rc = unsafe { libc::flock(second.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+        assert_eq!(rc, -1);
+        assert_eq!(
+            std::io::Error::last_os_error().raw_os_error(),
+            Some(libc::EWOULDBLOCK)
+        );
+
+        drop(guard);
+
+        // Released, not leaked: the same non-blocking attempt now succeeds.
+        let rc = unsafe { libc::flock(second.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+        assert_eq!(rc, 0);
+        unsafe {
+            libc::flock(second.as_raw_fd(), libc::LOCK_UN);
+        }
+    }
+
+    #[test]
+    fn acquire_can_be_taken_again_after_a_prior_guard_is_dropped() {
+        let tmp = tempfile::tempdir().unwrap();
+        let lock_path = tmp.path().join("tmp").join("model.lock");
+
+        let first = acquire(&lock_path, false, "test").unwrap();
+        drop(first);
+
+        // Re-acquiring must succeed immediately rather than deadlocking —
+        // proof the first guard's Drop actually released the OS-level lock
+        // rather than merely dropping the Rust value.
+        let second = acquire(&lock_path, false, "test").unwrap();
+        drop(second);
+    }
+
+    #[test]
+    fn acquire_never_deletes_the_lock_file() {
+        // Unlinking a lock file is itself racy (a third process could
+        // create-and-lock a fresh inode at the same path while a second
+        // process still holds a lock on the unlinked one), so the lock
+        // file is a permanent fixture — assert it survives a full
+        // acquire/release cycle.
+        let tmp = tempfile::tempdir().unwrap();
+        let lock_path = tmp.path().join("tmp").join("model.lock");
+
+        let guard = acquire(&lock_path, false, "test").unwrap();
+        assert!(lock_path.is_file());
+        drop(guard);
+        assert!(lock_path.is_file());
+    }
+
+    #[test]
+    fn ensure_installed_rechecks_completeness_after_acquiring_the_lock() {
+        // This is the whole point of taking the lock at all: a racing
+        // process that finishes the install while we're blocked on the
+        // lock must make us no-op rather than re-download and clobber
+        // staging. Unlike the "already complete" test above, this drives
+        // the actual interleaving: a background thread calls the public
+        // `ensure_installed` entry point and blocks inside `acquire`
+        // because the main thread (the "winner") holds the lock; only
+        // while the background thread is still blocked does the model
+        // become complete, so the only way it can return `Ok(())` is by
+        // taking the lock afterward and observing that completed state.
+        let tmp = tempfile::tempdir().unwrap();
+        let model_dir = tmp.path().join("models").join("some-model");
+        let lock_path = tmp.path().join("tmp").join("some-model.lock");
+        assert!(!dir_is_complete(&model_dir));
+
+        let guard = acquire(&lock_path, false, "some-model").unwrap();
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        let thread_model_dir = model_dir.clone();
+        std::thread::spawn(move || {
+            let result = ensure_installed(&thread_model_dir, false);
+            let _ = tx.send(result);
+        });
+
+        // A scheduling nudge, not a correctness requirement: this just
+        // improves the odds the spawned thread is genuinely blocked in
+        // `acquire` before we complete the model dir below. The test is
+        // still correct if it hasn't gotten there yet — the thread would
+        // then simply take the lock after we drop it and still find the
+        // dir complete.
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
+        std::fs::create_dir_all(&model_dir).unwrap();
+        for file in &MODEL_FILES {
+            std::fs::write(model_dir.join(file.name), b"stub").unwrap();
+        }
+        std::fs::write(model_dir.join(BPE_VOCAB_FILENAME), b"stub").unwrap();
+        assert!(dir_is_complete(&model_dir));
+
+        drop(guard);
+
+        // The timeout is not decoration: if the post-lock recheck is ever
+        // removed, the background thread instead proceeds to a real fetch
+        // of the (stubbed, wrong-size) files and hangs or errors slowly —
+        // bounding the wait turns that failure mode into a prompt, legible
+        // test failure instead of a CI stall.
+        match rx.recv_timeout(std::time::Duration::from_secs(30)) {
+            Ok(result) => result.unwrap(),
+            Err(_) => panic!(
+                "ensure_installed did not return within 30s of the model \
+                 dir being completed — the post-lock recheck may be missing"
+            ),
+        }
     }
 
     #[test]

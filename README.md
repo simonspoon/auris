@@ -273,6 +273,22 @@ The reason for having any of this: an ONNX file that is short or wrong does
 not produce a clean error, it faults somewhere inside the runtime, and a stack
 trace from inside a static ONNX Runtime is not a bug report anyone can act on.
 
+Two auris processes can end up racing to fetch the same missing model — two
+terminals cold-starting `auris serve` at once, say, or a transcribe run
+launched while `auris serve` is still fetching. Both would otherwise stage
+into the same deterministic staging directory and clobber each other's
+download mid-stream, so each fetch first takes a blocking advisory lock
+(`flock`) scoped to that model (or, for the VAD file, to the VAD download).
+Whichever process gets there first proceeds as above; the other blocks until
+the lock is free, then checks again whether the model is already installed
+before doing anything else — finding that it is, since the winner just
+finished, it simply returns rather than fetching a second copy or reporting a
+failure. The wait is silent unless progress output is already enabled —
+`verbose`, the same `!quiet && stderr.is_terminal()` condition that gates
+download progress lines (see "stderr" below) — in which case the waiting
+process prints one line saying it is waiting on another auris before it
+blocks.
+
 ### `bpe.vocab`
 
 **Generated on first install, beside the weights. Never downloaded, never
