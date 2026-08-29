@@ -22,9 +22,13 @@ daemon and its client (`src/daemon.rs`, task 951 — `auris serve` / `status`
 / `stop`, documented in `docs/daemon.md`), and model downloading with sha256
 verification (`src/model.rs`, task 967 — `auris serve` and the transcribe
 path both fetch a missing default model, and now the VAD model too, unless
-`--no-download` is given). Not built: VAD *segmentation* and streaming — the
-`speech` heartbeat, multiple `segment` lines, endpointing (`docs/streaming.md`)
-— and post-ASR correction (`docs/correction.md`); task 968 shipped a gate,
+`--no-download` is given), and a post-decode manufactured-vocabulary guard
+that re-decodes unbiased and discards a hallucinated transcript when
+hotword biasing manufactures one out of non-speech audio
+(`vocabulary::looks_manufactured`, `src/cli.rs`, task 970). Not built: VAD
+*segmentation* and streaming — the `speech` heartbeat, multiple `segment`
+lines, endpointing (`docs/streaming.md`) — and post-ASR correction
+(`docs/correction.md`); task 968 shipped a gate,
 not segmentation, and output is still one transcript, exactly as before. The
 invariants below describe what auris **must** do, read from `README.md` —
 the contract written before the code — not what it currently does. Check the
@@ -142,3 +146,20 @@ them — decide which, don't let them silently drift.
   escape hatch. This is a single-utterance gate, not the segmentation
   `docs/streaming.md` describes — no `speech` heartbeat, no multiple
   `segment` lines — that remains unbuilt.
+- **A biased transcript that the recognizer only manufactured is caught
+  after the fact, not trusted.** With `--vocabulary-file` loaded, non-speech
+  audio that clears both gates above can still make the recognizer invent a
+  transcript out of boosted vocabulary terms rather than return nothing
+  (`nonspeech-transient.wav` biased: 286 characters of "mesa mesa khora
+  khora khora ... mesa khan mesa q" at exit 0, where the same clip unbiased
+  correctly exits 1). Lowering the boost cannot fix this — the hallucination
+  is non-monotonic in boost, and a vocabulary file with no `:boost` values
+  already sits at the affected global default, 3.0 — so instead
+  `vocabulary::looks_manufactured` is a cheap prefilter (a run of 2+
+  consecutive vocabulary words) that only decides whether to spend a second,
+  unbiased decode of the same audio; the confirming decode, not the
+  heuristic, is what discards the transcript, mirroring the VAD gate's
+  "decision, not a filter" shape immediately above. This means the guard
+  provably cannot alter the output for any audio that decodes to something
+  unbiased, which is why it has no `--no-...` escape hatch — see README
+  "Exit codes" and `docs/vocabulary.md`.

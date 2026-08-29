@@ -34,11 +34,19 @@
 //!    instead of leaving it alone.** `tests/fixtures/nonspeech-transient.wav`
 //!    (a synthetic noise burst) makes Silero false-positive a confident
 //!    ~0.55 s "speech" span at essentially any threshold, so `has_speech`
-//!    is `true` for it and the recognizer runs. That is a genuine,
+//!    is `true` for it and the recognizer runs. That part is a genuine,
 //!    unclosed gap: unbiased, the full clip happens to decode to nothing,
 //!    but with hotword biasing — mesa's actual production configuration —
 //!    the same untouched clip decodes to a ~40-word hallucinated string of
-//!    boosted vocabulary terms. Neither of those is new: `--no-vad`
+//!    boosted vocabulary terms. That second half is no longer a leak,
+//!    though: a post-decode manufactured-vocabulary guard (mesa task 970,
+//!    `vocabulary::looks_manufactured`, README "Exit codes",
+//!    `docs/vocabulary.md`) now re-decodes this clip unbiased whenever the
+//!    biased transcript looks like a run of vocabulary terms, finds
+//!    nothing, and discards the hallucination before it reaches stdout —
+//!    so the leak this comment used to describe as open is closed, even
+//!    though the Silero false positive that lets the recognizer run on
+//!    this clip at all is not. Neither of those is new: `--no-vad`
 //!    produces the identical output either way (confirmed by running both
 //!    through the real binary, task 968), because this fixture was never
 //!    speech-gated before the VAD existed either — `audio::is_silent`
@@ -52,8 +60,8 @@
 //!    span turned the same clip's decode into a hallucinated filler word
 //!    ("Uh.") even in the unbiased case where the untouched full clip
 //!    decodes to nothing — i.e. trimming can manufacture a false positive
-//!    transcript where none existed before, on top of the one this gate
-//!    does not close.
+//!    transcript where none existed before, on top of the gap the VAD gate
+//!    itself does not close.
 //!
 //! So the recognizer now always sees the *original*, complete `samples`
 //! whenever any speech is found at all; the only thing the gate can do is
@@ -471,17 +479,23 @@ mod tests {
     ///
     /// What the recognizer then does with the whole clip is outside this
     /// gate's reach: unbiased it decodes to nothing and exits 1; **with
-    /// hotwords it produces a long hallucinated string**, a real,
-    /// user-visible leak under mesa's actual production configuration
-    /// (tracked separately). That leak is unchanged from pre-VAD auris, which
-    /// is why it is a known gap this task does not close rather than a
-    /// regression it introduces.
+    /// hotwords it still produces a long hallucinated string**, which used
+    /// to be a real, user-visible leak under mesa's actual production
+    /// configuration. That string no longer reaches stdout — the
+    /// manufactured-vocabulary guard (mesa task 970,
+    /// `vocabulary::looks_manufactured`, README "Exit codes") re-decodes the
+    /// clip unbiased, finds nothing, and discards it — but the discarding
+    /// happens at the CLI level, downstream of everything this gate does, so
+    /// nothing about *this* test's subject changed: `has_speech` is still
+    /// `true` here and the recognizer still runs.
     ///
     /// This asserts only the detection, deliberately. Asserting the decode is
-    /// empty would hold only without a vocabulary file and would tell a
-    /// future reader the case is handled when it is not; asserting the
-    /// hallucinated text would enshrine a defect as expected behaviour and
-    /// rot the moment the string drifted.
+    /// empty would be asserting the CLI guard's behaviour from inside the VAD
+    /// module, where the guard does not run; asserting the hallucinated text
+    /// would enshrine a defect as expected behaviour and rot the moment the
+    /// string drifted. Both claims belong at the CLI level, and
+    /// `tests/fixtures.rs`'s `manufactured_vocabulary_transcript_yields_no_transcript`
+    /// is where the first one is now actually checked.
     #[test]
     fn transient_noise_is_a_known_silero_false_positive() {
         let Some(model) = vad_model_path() else {

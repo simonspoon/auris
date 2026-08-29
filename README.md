@@ -442,9 +442,10 @@ instead. Trusting the recognizer's output alone would let that hallucinated
 text out at exit 0, which is worse than an empty transcript at exit 1 —
 mesa's driver would treat it as something the user actually said (mesa
 session 37: three consecutive turns transcribed as nothing but "Yeah.",
-none of them spoken by the person). So there are now two gates ahead of the
-recognizer, run in sequence, each capable of exiting `NOTHING_TRANSCRIBED`
-on its own:
+none of them spoken by the person). So there are now three gates around the
+recognizer, each capable of exiting `NOTHING_TRANSCRIBED` on its own. The
+first two run ahead of the recognizer, in sequence; the third runs after it
+and answers a different question entirely — see below.
 
 1. A cheap energy gate over the decoded samples (`audio::is_silent`) —
    pure arithmetic, no model to load, and it catches digital silence for
@@ -513,15 +514,12 @@ not.** That is not a regression: unbiased, the full clip still decodes to
 empty and exits 1 at the third `NOTHING_TRANSCRIBED` site below, exactly as
 it did before this gate existed, because `has_speech() == true` still hands
 the recognizer the untouched original samples — a VAD-on and a `--no-vad`
-run on this clip are byte-identical, same as every other file. But with a
-vocabulary file loaded — mesa's actual production configuration — that
-empty decode becomes a long hallucinated string instead, which is a real,
-user-visible leak under real settings. Closing it was not attempted here:
-the threshold that separates this clip from real speech does not exist in
-the range tested, and the alternative — an invented heuristic distinct from
+run on this clip are byte-identical, same as every other file. The
+threshold that separates this clip from real speech does not exist in the
+range tested, and the alternative — an invented heuristic distinct from
 Silero's own decision — would risk eating genuinely short real utterances
-like "yes." It is recorded as a known, pre-existing gap task 968 does not
-close, not one it introduces.
+like "yes," so that heuristic was not attempted; this remains a known,
+pre-existing gap task 968 does not close, not one it introduces.
 
 This is a deliberate, and considered, departure from mesa task 968's
 original wording, which asked auris to "drop non-speech spans, and
@@ -530,10 +528,89 @@ the acceptance criterion — no measurable accuracy loss on real speech — was
 the end, and the means defeated the end, for the reasons measured above.
 auris implements the end, not the clause.
 
-All three sites that can produce `NOTHING_TRANSCRIBED` — `is_silent`, the
-VAD gate, and the recognizer itself returning an empty decode — print the
-same wording, so there is one thing for mesa to match on, not three; each
-adds its own verbose-only stderr line naming which one fired.
+But with a vocabulary file loaded — mesa's actual production configuration
+— the VAD gap above used to matter far more than "one unbiased clip decodes
+to empty": the same untouched clip decoded to a long hallucinated string
+built out of boosted vocabulary terms instead, and that was a real,
+user-visible leak, not a hypothetical one. Closing it did not mean closing
+the VAD gap above — the false positive on `nonspeech-transient.wav` is
+still there, and still cannot be tuned away for the reasons just given.
+Instead, mesa task 970 adds a third gate, downstream of everything above,
+that catches the *consequence* of the false positive rather than the false
+positive itself.
+
+The manufactured-vocabulary guard runs after the recognizer returns a
+non-empty transcript and only when `--vocabulary-file` is in effect.
+Hotword biasing is meant to nudge an existing hypothesis
+toward the vocabulary, not to manufacture a transcript out of nothing, but
+on non-speech audio it can do exactly that — `nonspeech-transient.wav`
+biased decoded to 286 characters of "The vegetable mesa mesa khora khora
+khora ... mesa khan mesa q" at exit 0, where the same clip unbiased
+correctly exits 1 with empty stdout. Lowering the boost cannot fix this:
+the hallucination is non-monotonic in boost — the same clip hallucinates
+at 2.0 and 3.0, is clean at 4.0 and 6.5, and produces different (digit)
+garbage at 8.0, and other non-speech fixtures hallucinate at their own
+different boosts, so no boost is universally safe. Worse, a vocabulary
+file with no `:boost` values is not "unboosted" — bare terms inherit the
+global `hotwords_score`, fixed at 3.0 (`docs/vocabulary.md`), which is
+already inside the affected range, and 3.0 is also exactly where real
+speech first *gains* a feature (`mesa-names.wav` only decodes "qorvex"
+correctly from boost 3.0 up) — so lowering the boost trades away the
+vocabulary feature's own purpose rather than fixing the leak.
+
+Trusting a cheap heuristic as the decision was rejected too: instead,
+the guard is a prefilter plus a confirming decode, the same
+"decision, not a filter" shape the VAD gate above already uses. A cheap
+prefilter, `vocabulary::looks_manufactured`, fires when the transcript
+contains a run of 2 or more consecutive words that are each a vocabulary
+word (case-insensitive, punctuation stripped; a run counts across
+different terms, since the measured hallucinations mix terms freely).
+Firing decides nothing on its own — it only spends a second, unbiased
+decode of the exact same audio, on the already-loaded recognizer or via
+a second daemon call with empty hotwords, no second model load. If that
+unbiased decode also comes back empty, the vocabulary manufactured the
+whole transcript, so it is discarded and auris exits
+`NOTHING_TRANSCRIBED` instead. If the unbiased decode comes back with
+anything at all, the biased transcript is emitted completely unchanged —
+biasing nudged a real hypothesis rather than inventing one — and a
+confirming decode that *errors* is treated the same way, since an error
+is not evidence of hallucination. This split is what makes a blunt
+heuristic safe to run unconditionally: **the guard cannot change the
+output for any audio that decodes to something unbiased**, so a false
+trigger costs one wasted decode (measured at roughly 400 ms for a 4 s
+clip on a warm daemon, `bench/results/latency.json`) and never a wrong
+or altered transcript. There is deliberately no `--no-...` escape hatch
+for this gate — unlike VAD, it provably cannot reject audio that decodes
+to something unbiased, so there is nothing to escape from, and a caller
+wanting no vocabulary behaviour already has one: omit
+`--vocabulary-file`.
+
+The threshold of 2 consecutive vocabulary words came from measuring, not
+guessing: across 88 real-speech transcripts at shipped production boosts
+(40 real room recordings, 40 synthesized corpus clips, the 8 dictation
+fixtures, plus `plain.wav` and `mesa-names.wav`), the longest run of
+consecutive vocabulary words is **1** — no real transcript ever puts two
+vocabulary terms side by side, even a 40-word dictation fixture
+containing four vocabulary words in one sentence, because ordinary words
+separate them. All four confirmed non-speech hallucinations reach at
+least 3. So 2 sits in an empty dead zone with no observation on either
+side, and the prefilter fired on 0 of those 88 real transcripts — it is
+not on the normal path. The one honestly-stated residual risk: no corpus
+here contains real speech saying two vocabulary terms back to back
+("auris and khora" with nothing between), so that case is untested
+rather than ruled out. It is harmless regardless, because it triggers
+the confirming decode, which returns non-empty, and the transcript is
+emitted unchanged — the cost is one decode, not a lost transcript, which
+is what justified picking the more sensitive threshold over a
+safer-looking 3. Out of scope, and not caught by this guard: at boost
+8.0 the non-speech fixtures produce short runs of digit/letter garbage
+containing no vocabulary terms at all — a different failure mode.
+
+All four sites that can produce `NOTHING_TRANSCRIBED` — `is_silent`, the
+VAD gate, the recognizer returning an empty decode, and the
+manufactured-vocabulary guard — print the same wording, so there is one
+thing for mesa to match on; each adds its own verbose-only stderr line
+naming which one fired.
 
 The consequence for mesa: a nonzero exit means "there is no transcript," the
 same rule `speech.rs` already applies to kokoro-rs — a failed render is not

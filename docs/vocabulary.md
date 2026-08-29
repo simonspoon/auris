@@ -305,6 +305,119 @@ hallucinate those names into recordings that do not contain them.* Unmeasured,
 and flagged rather than guessed: whether a large ordinary-word list is safe at
 a lower boost.
 
+That admission — the mechanism refuses nothing, the terms' rarity is doing all
+the work — turns out to have a limit even for a curated, rare-and-distinctive
+list like mesa's own six names: on non-speech audio there is no real
+hypothesis for biasing to nudge, so the mechanism can manufacture a transcript
+out of nothing instead. Task 970 does not touch this section's argument — a
+curated vocabulary is still the right shape of list, and still the way to keep
+biasing safe on real speech — it adds a second, independent line of defence
+for the one case a curated list can't rule out by itself: audio with nothing
+in it at all. See "The manufactured-vocabulary guard" below.
+
+## The manufactured-vocabulary guard
+
+Task 970. With `--vocabulary-file` loaded — mesa's actual production
+configuration — `tests/fixtures/nonspeech-transient.wav` (see
+`tests/fixtures/README.md`) decoded to 286 characters of "The vegetable mesa
+mesa khora khora khora ... mesa khan mesa q" at exit 0, where the same clip
+unbiased correctly exits 1 with empty stdout. Exit 0 with text means mesa
+posts those words into a conversation as something the person said. This is
+the boosted-side consequence of the VAD gap `src/vad.rs` and
+`tests/fixtures/README.md` already record: Silero false-positives a ~0.55 s
+speech span in this clip at every threshold tried, so the recognizer always
+ran on it; what changed here is only what happens to the transcript that
+comes back, not whether the recognizer runs.
+
+Lowering the boost was tried first and rejected on evidence. The
+hallucination is non-monotonic in boost: `nonspeech-transient.wav`
+hallucinates at global 2.0 and 3.0, is clean at 4.0 and 6.5, and at 8.0
+produces digit garbage instead of words; `nonspeech-white.wav` and
+`nonspeech-rumble.wav` hallucinate at their own different boosts. There is no
+boost below which the failure universally vanishes. Worse, "lower the boost"
+is not even a complete mitigation for the default case: a vocabulary file
+with no `:boost` values is not unboosted, because bare terms inherit the
+global `hotwords_score`, fixed at 3.0 (see "The one thing that really is
+construction state" above) — the default case already sits inside the
+affected range. And 3.0 is exactly where real speech first *gains* the
+feature: `mesa-names.wav` only decodes "qorvex" correctly from boost 3.0 up,
+so lowering the boost trades away the feature this whole file exists to
+provide. `silence.wav` never hallucinates at any boost from 0.5 to 8.0 tried
+— the energy gate (`audio::is_silent`) already catches it before the
+recognizer runs, which is why this guard only needed to consider audio that
+clears both gates ahead of the recognizer.
+
+The fix instead is a prefilter plus a confirming decode, in `src/cli.rs`
+after the existing empty-transcript check and before stdout — the same
+"decision, not a filter" shape `src/vad.rs`'s module doc comment already
+uses, for the same reason: a blunt heuristic is safe to run unconditionally
+only if it never decides the outcome by itself.
+
+1. `vocabulary::looks_manufactured` is the prefilter: true when the
+   transcript contains a run of 2 or more consecutive words that are each a
+   vocabulary word (case-insensitive, ASCII punctuation stripped; a run
+   counts across different terms, since the measured hallucinations mix
+   terms freely rather than repeating one).
+2. If it fires, auris re-decodes the exact same audio with no vocabulary at
+   all — on the already-loaded recognizer for `--no-daemon`, or via a
+   second daemon call with empty hotwords. No second model load either way.
+3. An empty unbiased decode means the vocabulary manufactured the entire
+   transcript: auris discards it, prints `NOTHING_TRANSCRIBED_MSG` to
+   stderr, and exits `NOTHING_TRANSCRIBED` — same as the other two gates
+   (README "Exit codes"). A non-empty unbiased decode means biasing nudged
+   a real hypothesis rather than inventing one, so the biased transcript is
+   emitted completely unchanged. A confirming decode that *errors* is not
+   evidence of hallucination either way, so auris falls through and emits
+   the biased transcript as if the guard had never fired.
+
+That split is what makes a blunt heuristic safe: the guard cannot change the
+output for any audio that decodes to something unbiased, so a false trigger
+costs one wasted decode and never a wrong or altered transcript. There is
+deliberately no `--no-...` escape hatch for it, unlike the VAD gate — this
+one provably cannot reject audio that decodes to something unbiased, so
+there is nothing to escape from, and a caller who wants no vocabulary
+behaviour already has one: omit `--vocabulary-file`.
+
+The threshold of 2 was measured, not guessed. Across 88 real-speech
+transcripts at shipped production boosts — 40 real room recordings
+(`bench/results/auris-vocab-acoustic.tsv`), 40 synthesized corpus clips
+(`bench/results/auris-vocab.tsv`), the 8 dictation fixtures, plus
+`plain.wav` at boosts 3.0 and 8.0 and `mesa-names.wav` — the longest run of
+consecutive vocabulary words is 1: 26 clips at run 0, 14 at run 1, none at 2
+or above in the 40-clip corpus. The closest stress case is a 40-word
+dictation fixture containing four vocabulary words in one sentence, still
+run 1 because ordinary words separate each of them. All four confirmed
+non-speech hallucinations reach at least 3 (`nonspeech-white.wav` is the
+minimum; the transient clip at shipped boosts reaches 44). So 2 sits in an
+empty dead zone with no observation on either side, and the prefilter fired
+on 0 of those 88 real transcripts — the confirming decode, roughly 400 ms
+for a 4 s clip on a warm daemon (`bench/results/latency.json`), is not on
+the normal path.
+
+The one honest residual risk: no corpus assembled here contains real speech
+saying two vocabulary terms back to back with nothing between them ("auris
+and khora"), so that case is untested rather than ruled out. It is harmless
+regardless of which way it turns out, because it triggers the confirming
+decode, which returns non-empty for real speech, and the biased transcript
+is emitted unchanged — the cost is one decode, not a lost transcript, and
+that asymmetry is why the more sensitive threshold (2) was chosen over the
+safer-looking one (3) rather than the reverse.
+
+Explicitly out of scope: at boost 8.0 the non-speech fixtures produce short
+runs of digit and single-letter garbage containing no vocabulary terms at
+all. That is a different failure mode from the one measured above, and this
+guard does not catch it.
+
+This closes the boosted-audio hallucination on `nonspeech-transient.wav`
+that "The one thing that really is construction state" above already showed
+the shape of at higher, uniform boosts ("khora khora khora khora… — runaway
+repetition" at global 10.0+): the same repetition-under-boost failure,
+reached here at ordinary production settings by non-speech audio rather than
+by pushing the global score past its safe range. It does not close the VAD
+gap that lets the recognizer run on `nonspeech-transient.wav` in the first
+place — see `tests/fixtures/README.md` — only what happens to the transcript
+once it comes back manufactured.
+
 ## Before and after
 
 `u03`, decoded with the same recognizer and `modified_beam_search` in both

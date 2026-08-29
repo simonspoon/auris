@@ -308,3 +308,84 @@ fn mesa_names_lands_only_when_biased() {
         "expected helios PRESENT biased, got {biased_text:?}"
     );
 }
+
+/// mesa task 970: hotword biasing turned an empty decode of non-speech
+/// audio into a confident hallucination ("The vegetable mesa mesa khora
+/// khora khora ... mesa khan mesa q", 286 chars, exit 0). Unbiased,
+/// `nonspeech-transient.wav` already exits 1 with empty stdout (see
+/// `src/audio.rs`'s silence gate and `src/vad.rs`'s VAD gate); biased, it
+/// must exit 1 with empty stdout too, now via the manufactured-vocabulary
+/// guard (`vocabulary::looks_manufactured` plus its confirming unbiased
+/// decode in `src/cli.rs`).
+#[test]
+fn manufactured_vocabulary_transcript_yields_no_transcript() {
+    let Some(model_dir) = spike_model_dir() else {
+        return;
+    };
+    let tmp = symlinked_model_dir(&model_dir);
+    let vocabulary_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("spike/fixtures/hotwords.txt")
+        .to_string_lossy()
+        .into_owned();
+    let model = tmp.path().to_string_lossy().into_owned();
+    let wav = std::fs::read(fixtures_dir().join("nonspeech-transient.wav"))
+        .expect("read nonspeech-transient.wav");
+
+    let out = run_auris(
+        &[
+            "--no-daemon",
+            "--quiet",
+            "-m",
+            &model,
+            "--vocabulary-file",
+            &vocabulary_file,
+        ],
+        &wav,
+    );
+    let text = String::from_utf8_lossy(&out.stdout);
+    eprintln!(
+        "nonspeech-transient.wav (biased): exit={:?} stdout={text:?}",
+        out.status.code()
+    );
+    assert_eq!(out.status.code(), Some(1));
+    assert!(text.is_empty(), "expected empty stdout, got {text:?}");
+}
+
+/// The other half of mesa task 970's guard: it must not change anything for
+/// audio that actually contains the vocabulary's speech. Same fixture and
+/// vocabulary as `mesa_names_lands_only_when_biased`, run through the
+/// guard's code path this time (that test predates the guard).
+#[test]
+fn manufactured_vocabulary_guard_does_not_affect_real_speech() {
+    let Some(model_dir) = spike_model_dir() else {
+        return;
+    };
+    let tmp = symlinked_model_dir(&model_dir);
+    let vocabulary_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("spike/fixtures/hotwords.txt")
+        .to_string_lossy()
+        .into_owned();
+    let model = tmp.path().to_string_lossy().into_owned();
+    let wav = std::fs::read(fixtures_dir().join("mesa-names.wav")).expect("read mesa-names.wav");
+
+    let out = run_auris(
+        &[
+            "--no-daemon",
+            "--quiet",
+            "-m",
+            &model,
+            "--vocabulary-file",
+            &vocabulary_file,
+        ],
+        &wav,
+    );
+    let text = String::from_utf8_lossy(&out.stdout);
+    eprintln!(
+        "mesa-names.wav (biased, guard active): exit={:?} stdout={text:?}",
+        out.status.code()
+    );
+    assert_eq!(out.status.code(), Some(0), "stderr: {:?}", out.stderr);
+    let normalised = normalise(&text);
+    assert!(normalised.contains("qorvex"), "got {text:?}");
+    assert!(normalised.contains("helios"), "got {text:?}");
+}

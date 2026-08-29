@@ -22,7 +22,7 @@ use crate::daemon;
 use crate::engine::{EngineConfig, Recognizer};
 use crate::model;
 use crate::vad;
-use crate::vocabulary::Vocabulary;
+use crate::vocabulary::{Vocabulary, looks_manufactured};
 
 /// Exit codes, copied from kokoro-rs (README "Exit codes"), not reinvented.
 const OK: i32 = 0;
@@ -506,18 +506,27 @@ fn run_transcribe(args: Args) -> i32 {
     }
 
     let hotwords_string = vocabulary.as_ref().map(|v| v.hotwords_string());
+    let socket_path = args
+        .socket
+        .clone()
+        .unwrap_or_else(|| home.join("auris.sock"));
 
     // The default path talks to the daemon (README "The daemon"), starting
     // one if none is listening, so the ~4 s model load is paid once per
     // daemon lifetime rather than once per call. `--no-daemon` is the
     // escape hatch that keeps the original in-process behaviour verbatim.
-    let text = if args.no_daemon {
+    // The `--no-daemon` recognizer is kept in scope past this branch (rather
+    // than dropped at the end of an `if`/`else` as before) so the
+    // manufactured-vocabulary guard below can run its confirming decode on
+    // the same already-loaded recognizer instead of paying a second ~4 s
+    // model load.
+    let recognizer = if args.no_daemon {
         if verbose {
             eprintln!("auris: loading {}", model_dir.display());
         }
         let load_start = Instant::now();
         let recognizer = match Recognizer::load(&EngineConfig {
-            model_dir,
+            model_dir: model_dir.clone(),
             ..Default::default()
         }) {
             Ok(r) => r,
@@ -532,7 +541,12 @@ fn run_transcribe(args: Args) -> i32 {
         if interrupt.load(Ordering::SeqCst) {
             return INTERRUPTED;
         }
+        Some(recognizer)
+    } else {
+        None
+    };
 
+    let text = if let Some(recognizer) = &recognizer {
         let decode_start = Instant::now();
         let result = match &hotwords_string {
             Some(h) => recognizer.decode_with_hotwords(&samples, h),
@@ -550,10 +564,6 @@ fn run_transcribe(args: Args) -> i32 {
         }
         text
     } else {
-        let socket_path = args
-            .socket
-            .clone()
-            .unwrap_or_else(|| home.join("auris.sock"));
         let hotwords = hotwords_string.as_deref().unwrap_or("");
         match daemon::transcribe_via_daemon(&socket_path, &model_dir, &samples, hotwords) {
             Ok((text, decode_ms)) => {
@@ -583,6 +593,55 @@ fn run_transcribe(args: Args) -> i32 {
             eprintln!("auris: the recognizer ran and returned an empty transcript");
         }
         return NOTHING_TRANSCRIBED;
+    }
+
+    // The manufactured-vocabulary guard (mesa task 970): hotword biasing is
+    // meant to nudge an existing hypothesis toward the vocabulary, not to
+    // manufacture a transcript out of nothing, but on non-speech audio it
+    // can do exactly that — a confident, wholly invented transcript built
+    // almost entirely out of boosted terms (e.g. "The vegetable mesa mesa
+    // khora khora khora ... mesa khan mesa q" from a transient click).
+    // Neither lowering the boost nor trusting the heuristic below as a
+    // decision worked (measured: the hallucination is non-monotonic in
+    // boost, and real speech has its own legitimate vocabulary hits), so
+    // this guard is a prefilter plus a confirming decode, mirroring
+    // `src/vad.rs`'s "decision, not a filter" shape: `looks_manufactured`
+    // only decides whether to spend a second, unbiased decode of the exact
+    // same audio. If that unbiased decode also comes back with something,
+    // the biased transcript stands unchanged — biasing nudged a real
+    // hypothesis, it didn't invent one. Only when the unbiased decode comes
+    // back empty is the biased transcript discarded. This is what makes the
+    // prefilter safe to run unconditionally despite being blunt: it cannot
+    // change the output for any audio that decodes to something unbiased,
+    // so a false trigger costs one wasted decode and never a wrong or
+    // altered transcript. (A separate, out-of-scope failure mode: at boost
+    // 8.0 the same non-speech fixtures produce short runs of digit/letter
+    // garbage containing no vocabulary terms at all, which this guard
+    // cannot and does not catch.)
+    if let Some(v) = &vocabulary
+        && looks_manufactured(text, &v.terms)
+    {
+        let confirmation: Result<String, String> = match &recognizer {
+            Some(recognizer) => recognizer.decode(&samples).map_err(|e| e.to_string()),
+            None => daemon::transcribe_via_daemon(&socket_path, &model_dir, &samples, "")
+                .map(|(text, _)| text)
+                .map_err(|e| e.to_string()),
+        };
+        // A failed confirming decode is not evidence of hallucination — fall
+        // through and emit the biased transcript as if the guard had never
+        // triggered, same as `Ok(_)` non-empty below.
+        if let Ok(unbiased) = confirmation
+            && unbiased.trim().is_empty()
+        {
+            eprintln!("{NOTHING_TRANSCRIBED_MSG}");
+            if verbose {
+                eprintln!(
+                    "auris: the transcript was made only of boosted vocabulary terms and \
+                     the same audio decodes to nothing without the vocabulary; discarded"
+                );
+            }
+            return NOTHING_TRANSCRIBED;
+        }
     }
 
     let stdout = std::io::stdout();

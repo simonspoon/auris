@@ -46,28 +46,42 @@ Regenerate with `bench/corpus/synthesize_nonspeech.sh` (idempotent;
 what VAD should correctly classify as speech, not reject) and for
 `bench/results/acoustic-wav/`, this repo's genuine room recordings.
 
-### `nonspeech-transient.wav`: a known, unclosed gap
+### `nonspeech-transient.wav`: the VAD gap, and the guard that now catches its consequence
 
 Of the three, this one is not actually rejected by the VAD gate
 (`src/vad.rs`). Silero reports a confident ~0.55 s "speech" span in it at
 every threshold measured, from 0.5 down to 0.05 — task 968's sweep found
 no threshold that separates it from real speech, so this is not a tuning
-gap, it is a Silero false positive on this specific synthetic burst.
-
-Under the decision-not-filter design (`src/vad.rs`'s module doc comment),
-a false positive here cannot corrupt anything — the gate either blocks the
-recognizer or hands it the same, untouched clip `--no-vad` would have
-decoded anyway. What that clip decodes *to* still depends on hotword
-biasing: unbiased, the full 4 s clip happens to decode to nothing and
-exits `NOTHING_TRANSCRIBED`; with `--vocabulary-file` (mesa's actual
-production configuration), the same untouched clip decodes to a ~40-word
-hallucinated string of boosted vocabulary terms. Both behaviors are
-unchanged from pre-VAD auris — `is_silent` already let this clip through,
-so this is not something task 968 introduced or made worse, only a
-pre-existing gap it did not manage to close. Alternatives considered and
+gap, it is a Silero false positive on this specific synthetic burst. **That
+part is still true and still open**: the recognizer still runs on this
+clip, at every `--vad-threshold` value, because `has_speech()` is `true`
+for it regardless. Alternatives considered and rejected, and still
 rejected: raising the detection threshold (fails at every value tested,
 and would also reintroduce the false negative on `u17.wav` in
 `bench/results/acoustic-wav/`), and a "reject short spans relative to clip
 length" heuristic (would also reject genuinely short real utterances like
 "yes" or "done" — speculative complexity for one synthetic fixture, not
 attempted).
+
+Under the decision-not-filter design (`src/vad.rs`'s module doc comment),
+a false positive here cannot corrupt anything on its own — the gate either
+blocks the recognizer or hands it the same, untouched clip `--no-vad`
+would have decoded anyway. Unbiased, the full 4 s clip still happens to
+decode to nothing and exits `NOTHING_TRANSCRIBED`, exactly as before.
+
+What changed (mesa task 970) is what used to happen with
+`--vocabulary-file` loaded — mesa's actual production configuration.
+Previously, that same untouched clip decoded to a ~40-word hallucinated
+string of boosted vocabulary terms and reached stdout at exit 0. It still
+decodes to that hallucinated string internally — the VAD gap above still
+lets the recognizer run on it, and vocabulary biasing still manufactures a
+transcript out of it — but a new post-decode guard, the
+manufactured-vocabulary guard (`docs/vocabulary.md` §"The
+manufactured-vocabulary guard", README "Exit codes"), now catches the
+result before it reaches stdout: it re-decodes the same clip unbiased,
+finds nothing, discards the hallucinated transcript, and exits
+`NOTHING_TRANSCRIBED` instead. So the gap this section used to call
+"unclosed" is closed at the point that mattered — no hallucinated text
+escapes to stdout under any tested configuration — while the underlying
+Silero false positive on this clip, described above, is untouched and
+remains open.

@@ -187,6 +187,81 @@ impl Vocabulary {
     }
 }
 
+/// A run of 2 or more consecutive vocabulary words (mesa task 970,
+/// corpus measurement): across 88 real-speech transcripts decoded at
+/// shipped production boosts — the 40 real room recordings
+/// (`bench/results/auris-vocab-acoustic.tsv`), 40 synthesized corpus clips
+/// (`bench/results/auris-vocab.tsv`), 8 dictation fixtures, plus `plain.wav`
+/// at boosts 3.0 and 8.0, plus `mesa-names.wav` — the longest run of
+/// consecutive vocabulary words is 1: not one of them ever places two
+/// vocabulary terms side by side (the 40 corpus clips break down as 26 at
+/// run 0, 14 at run 1, none at 2 or above; the closest stress case, a
+/// 40-word dictation fixture naming four vocabulary words in one sentence,
+/// still tops out at run 1 because each is separated by at least two
+/// ordinary words). The four confirmed non-speech hallucinations all reach
+/// at least 3 (`nonspeech-white.wav` is the minimum; the transient clip at
+/// shipped boosts reaches 44). So 2 sits in an empty dead zone with margin
+/// on both sides and no observation anywhere near it.
+///
+/// [`looks_manufactured`] only ever triggers a confirming unbiased decode
+/// (see its doc comment), so this constant trades decode cost against
+/// sensitivity, never correctness — a warm-daemon confirming decode costs
+/// roughly 100 ms per second of audio at p50 (`bench/results/latency.json`,
+/// so ~400 ms for a typical 4-second clip), but the prefilter fired on 0 of
+/// the 88 real transcripts above, so that cost is not on the normal path at
+/// all. The one thing the corpus does not contain is real speech legitimately
+/// saying two vocabulary terms back to back with nothing between them
+/// ("mesa auris") — that case is untested, not ruled out, and it is
+/// harmless here: it would trigger the confirming decode, that decode
+/// would come back non-empty because the person really spoke, and the
+/// biased transcript would be emitted unchanged. The residual risk of this
+/// threshold is paid in decode time, never in accuracy, which is why the
+/// more sensitive value is chosen over the safer-looking 3.
+const MANUFACTURED_RUN: usize = 2;
+
+/// A cheap prefilter, not a decision: true means the biased transcript is
+/// *suspicious enough to be worth a second, unbiased decode of the same
+/// audio* — never means "reject this transcript" on its own (`cli.rs`'s
+/// caller does the rejecting, and only after that confirming decode comes
+/// back empty too). That split is what makes a blunt heuristic safe to run
+/// unconditionally: a false positive here costs one extra decode and never
+/// changes what reaches stdout, so this function is deliberately tuned to
+/// over-trigger rather than under-trigger.
+///
+/// Definition: true when `text` contains a run of [`MANUFACTURED_RUN`] or
+/// more consecutive words that are each a vocabulary word — a
+/// whitespace-separated word of any `terms` entry's `text`, so a multi-word
+/// phrase term contributes each of its words individually. Comparison is
+/// case-insensitive with leading/trailing ASCII punctuation stripped off
+/// each word first. The run counts across different terms, not just
+/// repeats of one term — the measured hallucinations mix terms freely
+/// ("mesa khora khora"), so requiring the run to be one repeated term would
+/// miss most of them.
+pub fn looks_manufactured(text: &str, terms: &[Term]) -> bool {
+    let vocab_words: std::collections::HashSet<String> = terms
+        .iter()
+        .flat_map(|t| t.text.split_whitespace())
+        .map(|w| w.to_lowercase())
+        .collect();
+    if vocab_words.is_empty() {
+        return false;
+    }
+
+    let mut run = 0usize;
+    for word in text.split_whitespace() {
+        let stripped = word.trim_matches(|c: char| c.is_ascii_punctuation());
+        if vocab_words.contains(&stripped.to_lowercase()) {
+            run += 1;
+            if run >= MANUFACTURED_RUN {
+                return true;
+            }
+        } else {
+            run = 0;
+        }
+    }
+    false
+}
+
 /// Parses one line: strips its comment, and returns `None` for a
 /// blank/comment-only line or `Some(term)` for a valid entry. `line_no` is
 /// 1-based, for error messages only.
@@ -393,6 +468,89 @@ mod tests {
     fn rejects_control_character_in_term() {
         let err = Vocabulary::parse("me\u{0007}sa :3.0\n").unwrap_err();
         assert!(matches!(err, VocabularyError::ControlCharacter(1, _)));
+    }
+
+    /// The production term list used in mesa task 970's measurement table
+    /// (`spike/fixtures/hotwords.txt`, inlined here so this test doesn't
+    /// depend on the model spike being present — same convention as
+    /// `hotwords_string_matches_the_production_fixture_shape` above).
+    fn task_970_vocabulary() -> Vocabulary {
+        let file = "mesa :3.0\nauris :3.0\nkhora :6.5\nqorvex :5.0\nhelios :3.0\nkokoro :3.0\n";
+        Vocabulary::parse(file).expect("parse")
+    }
+
+    #[test]
+    fn measured_hallucinations_are_flagged() {
+        let v = task_970_vocabulary();
+        // nonspeech-transient.wav @3.0 (mesa task 970's repro).
+        assert!(looks_manufactured(
+            "The vegetable mesa mesa khora khora khora mesa khan mesa q",
+            &v.terms
+        ));
+        // nonspeech-white.wav @3.0 — the shortest run measured in any
+        // confirmed hallucination, at 3, comfortably clear of the
+        // threshold: MANUFACTURED_RUN is set from the real-speech ceiling
+        // of 1, not from this number.
+        assert!(looks_manufactured("mesa mesa mesa", &v.terms));
+        // nonspeech-rumble.wav @4.0.
+        assert!(looks_manufactured(
+            "khora khora khora khora khora khora khora khora",
+            &v.terms
+        ));
+    }
+
+    #[test]
+    fn real_speech_transcripts_are_not_flagged() {
+        let v = task_970_vocabulary();
+        assert!(!looks_manufactured(
+            "open the daily notes and add a line about the meeting",
+            &v.terms
+        ));
+        assert!(!looks_manufactured("hey qorvex hey helios", &v.terms));
+        assert!(!looks_manufactured(
+            "open the daily mesa and add a line about the meeting",
+            &v.terms
+        ));
+    }
+
+    #[test]
+    fn empty_text_is_not_flagged() {
+        let v = task_970_vocabulary();
+        assert!(!looks_manufactured("", &v.terms));
+    }
+
+    #[test]
+    fn a_run_split_by_a_non_vocabulary_word_does_not_count_as_one_run() {
+        // Singleton vocabulary words, each separated by an ordinary word,
+        // never accumulate into a run — a non-vocabulary word resets it.
+        let v = task_970_vocabulary();
+        assert!(!looks_manufactured("mesa the khora the mesa", &v.terms));
+        // The contrast: with nothing between them, two adjacent vocabulary
+        // words do form a run of MANUFACTURED_RUN (2) and are flagged.
+        assert!(looks_manufactured("mesa khora", &v.terms));
+    }
+
+    /// The exact boundary [`MANUFACTURED_RUN`] encodes: a single vocabulary
+    /// word surrounded by ordinary words is never enough on its own —
+    /// that's the shape every real transcript in the corpus takes — but two
+    /// of them adjacent, with nothing between, is.
+    #[test]
+    fn a_single_vocabulary_word_among_ordinary_words_is_not_enough_but_two_adjacent_are() {
+        let v = task_970_vocabulary();
+        assert!(!looks_manufactured("open mesa and add a note", &v.terms));
+        assert!(looks_manufactured(
+            "open mesa khora and add a note",
+            &v.terms
+        ));
+    }
+
+    #[test]
+    fn case_and_trailing_punctuation_are_handled() {
+        // "Mesa," and "MESA" are already two adjacent vocabulary words once
+        // case and trailing punctuation are normalised, so this flags on
+        // those two alone — khora is not needed to reach the run.
+        let v = task_970_vocabulary();
+        assert!(looks_manufactured("Mesa, MESA khora.", &v.terms));
     }
 
     #[test]
