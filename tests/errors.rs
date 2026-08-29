@@ -389,11 +389,17 @@ fn usage_missing_file_path() {
 /// non-interactive failure surface exits 0 while stdout is empty — that
 /// combination is exactly what would make mesa's speech driver treat a
 /// failed run as a successful, silent transcription.
+///
+/// Deliberately not swept here: a valid wav with no `--no-download` and no
+/// model installed. That is a real network fetch, not a failure case, and
+/// sweeping it would make every `cargo test` perform a ~661 MB download.
+/// It's covered by the `#[ignore]`d `missing_default_model_without_no_download`
+/// above; its offline counterpart (`--no-download`) is swept immediately
+/// below.
 #[test]
 fn no_failure_case_exits_0_with_empty_stdout() {
     let wav = small_valid_wav();
     let cases: Vec<(Vec<&str>, Vec<u8>)> = vec![
-        (vec!["--no-daemon", "--quiet"], wav.clone()),
         (vec!["--no-daemon", "--quiet", "--no-download"], wav),
         (
             vec!["--no-daemon", "--quiet"],
