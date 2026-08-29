@@ -21,6 +21,7 @@ use crate::audio;
 use crate::daemon;
 use crate::engine::{EngineConfig, Recognizer};
 use crate::model;
+use crate::vad;
 use crate::vocabulary::Vocabulary;
 
 /// Exit codes, copied from kokoro-rs (README "Exit codes"), not reinvented.
@@ -97,6 +98,19 @@ pub struct Args {
     /// Print installed model names, one per line, and exit
     #[arg(long)]
     list_models: bool,
+
+    /// Silero VAD speech-probability threshold
+    #[arg(long, value_name = "F", default_value_t = vad::VadConfig::default().threshold)]
+    vad_threshold: f32,
+
+    /// Speech spans shorter than this are dropped
+    #[arg(long, value_name = "SECS", default_value_t = vad::VadConfig::default().min_speech)]
+    vad_min_speech: f32,
+
+    /// Skip the VAD gate — for audio that is already segmented, or to
+    /// measure accuracy against today's behaviour with no VAD at all
+    #[arg(long)]
+    no_vad: bool,
 
     /// Load the recognizer in-process instead of talking to a daemon
     #[arg(long)]
@@ -180,7 +194,7 @@ fn install_interrupt_handler() -> Arc<AtomicBool> {
 /// `$HOME` is unset. Takes `home` rather than reading `$HOME` itself so the
 /// one env read lives at the top of `run`, not scattered through pure
 /// helpers.
-fn auris_home(home: Option<&str>) -> PathBuf {
+pub(crate) fn auris_home(home: Option<&str>) -> PathBuf {
     if let Ok(dir) = std::env::var("AURIS_HOME") {
         return PathBuf::from(dir);
     }
@@ -304,6 +318,21 @@ fn run_transcribe(args: Args) -> i32 {
         return OK;
     }
 
+    if !(0.0..=1.0).contains(&args.vad_threshold) {
+        eprintln!(
+            "auris: --vad-threshold must be between 0.0 and 1.0, got {}",
+            args.vad_threshold
+        );
+        return USAGE;
+    }
+    if !args.vad_min_speech.is_finite() || args.vad_min_speech < 0.0 {
+        eprintln!(
+            "auris: --vad-min-speech must be a non-negative number of seconds, got {}",
+            args.vad_min_speech
+        );
+        return USAGE;
+    }
+
     let mut input: Box<dyn Read> = if let Some(path) = &args.path {
         match std::fs::File::open(path) {
             Ok(f) => Box::new(f),
@@ -389,6 +418,57 @@ fn run_transcribe(args: Args) -> i32 {
             eprintln!("auris: silence gate tripped; the recognizer was not run");
         }
         return NOTHING_TRANSCRIBED;
+    }
+
+    // Silero VAD runs client-side, right here — the same spot `is_silent`
+    // just ran, so this one gate covers both the daemon and `--no-daemon`
+    // paths identically. It is a decision, not a filter (`src/vad.rs`'s
+    // module doc comment): it only decides whether to run the recognizer at
+    // all, and `samples` reaching the recognizer below is never touched by
+    // it — an earlier design that trimmed audio down to the detected speech
+    // span broke real transcripts (35 of 40 files in a sweep changed from
+    // `--no-vad`), so the recognizer always sees the same, complete buffer
+    // it always did. `--no-vad` is the escape hatch (mirroring
+    // `--no-daemon`/`--no-download`): audio mesa already segments needs no
+    // second pass.
+    if !args.no_vad {
+        let vad_path = model::vad_model_path(&home);
+        if !vad_path.is_file() {
+            if args.no_download {
+                eprintln!(
+                    "auris: VAD model {} is not installed at {}; run without --no-download, or run `auris serve`, to fetch it",
+                    model::VAD_FILENAME,
+                    vad_path.display()
+                );
+                return NOTHING_TRANSCRIBED;
+            }
+            if let Err(e) = model::ensure_vad_installed(&home, verbose) {
+                eprintln!("auris: {e}");
+                return NOTHING_TRANSCRIBED;
+            }
+        }
+        if interrupt.load(Ordering::SeqCst) {
+            return INTERRUPTED;
+        }
+
+        let vad = match vad::Vad::load(&vad::VadConfig {
+            model: vad_path,
+            threshold: args.vad_threshold,
+            min_speech: args.vad_min_speech,
+        }) {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("auris: {e}");
+                return e.exit_code();
+            }
+        };
+        if !vad.has_speech(&samples) {
+            eprintln!("{NOTHING_TRANSCRIBED_MSG}");
+            if verbose {
+                eprintln!("auris: no speech detected; the recognizer was not run");
+            }
+            return NOTHING_TRANSCRIBED;
+        }
     }
 
     // Parsed and validated before the ~4 s model load, so a bad
@@ -562,6 +642,25 @@ fn run_serve(args: ServeArgs) -> i32 {
         // own validation do the checking, same as run_transcribe.
         ModelSource::Explicit(path) => path,
     };
+
+    // "Run `auris serve` once after install" is the complete install-time
+    // fetch step (README "Getting the model"), so the VAD model is fetched
+    // here too, not only on first transcribe.
+    let vad_path = model::vad_model_path(&home);
+    if !vad_path.is_file() {
+        if args.no_download {
+            eprintln!(
+                "auris: VAD model {} is not installed at {}; run without --no-download to fetch it",
+                model::VAD_FILENAME,
+                vad_path.display()
+            );
+            return NOTHING_TRANSCRIBED;
+        }
+        if let Err(e) = model::ensure_vad_installed(&home, verbose) {
+            eprintln!("auris: {e}");
+            return NOTHING_TRANSCRIBED;
+        }
+    }
 
     let socket_path = args
         .socket

@@ -14,8 +14,36 @@ contract: the real model hallucinates words on digital silence instead of
 returning nothing, so auris now catches that before decoding rather than
 trusting the recognizer's output. It is not the VAD segmentation described
 below — it answers one yes/no question about a whole utterance and detects
-no speech/silence boundary at all — and the Silero VAD this document settles
-on supersedes it once segmentation is built.
+no speech/silence boundary at all.
+
+**Update, task 968: a Silero VAD gate has since shipped, and `is_silent` was
+deliberately kept, not superseded.** What task 968 built is a *gate*, not
+the segmentation this document describes below, and — this matters — not a
+filter either. It runs Silero over the submitted audio and makes one
+decision: no speech span found anywhere means the recognizer never runs; any
+speech span found means the recognizer decodes the **original audio,
+untouched**, not the spans Silero found. An earlier version concatenated
+just the speech spans and handed the recognizer that trimmed buffer instead
+— measured, and reverted, because Silero's span edges are cut for
+segmentation (where the consumer pads them and the exact edge doesn't
+matter) and Parakeet is an offline recognizer for which the acoustic context
+right at the edge of what it decodes is load-bearing: trimming corrupted 35
+of 40 benchmark transcripts and, on one noise clip, turned a correct empty
+decode into a hallucinated word by narrowing the audio down to exactly the
+span Silero (wrongly) flagged. So the gate this task shipped deliberately
+diverges from mesa task 968's literal wording ("drop non-speech spans...
+transcribe the speech spans only") to hold its actual acceptance
+criterion — no accuracy loss on real speech — which trimming would have
+violated. Output shape is unchanged either way: one buffer in, one
+transcript out, same as before; there is still no `speech` heartbeat, no
+multiple `segment` lines, no endpointing. `is_silent` stays ahead of the VAD
+gate as a free, model-free short-circuit — pure arithmetic that catches
+digital silence for nothing — because it answers a different, cheaper
+question than the VAD does ("is there any signal at all" versus "is there
+any speech in it"), and the VAD is not free: it is a model load and a decode
+pass, worth skipping when the cheap check already has the answer. See
+README "Exit codes" and `--vad-*` for what shipped; the segmentation and
+line-protocol design in the rest of this document remains forward-looking.
 
 ## Why "streaming" had to be redefined for STT
 
@@ -133,7 +161,8 @@ section, is computed by the same VAD that segmentation runs. Segmentation
 and the heartbeat come from one component, so the cost of running a VAD is
 paid once for two reasons, not two costs for two features. That cost is also
 small in the terms this project measures things in: `silero_vad.onnx` is
-about 630 KB, against the 652 MB encoder the daemon exists to keep loaded.
+1,807,522 bytes (~1.8 MB, verified — task 968), against the 652 MB encoder
+the daemon exists to keep loaded.
 
 So the engine change removed one of segmentation's two justifications and
 left the other standing, and the one it left is the one that was never

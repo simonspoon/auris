@@ -13,17 +13,22 @@ mesa's speech driver (`mesa/src/core/speech.rs`) as the primary consumer.
 ## Status: partial
 
 Built and tested today: audio input (`src/audio.rs`), an energy gate ahead
-of the recognizer for silent audio (`audio::is_silent`, task 958), the
-recognizer (`src/engine.rs`), the vocabulary term list (`src/vocabulary.rs`),
-the one-shot transcribe path (`src/cli.rs`), and the daemon and its client
-(`src/daemon.rs`, task 951 — `auris serve` / `status` / `stop`, documented in
-`docs/daemon.md`), and model downloading with sha256 verification
-(`src/model.rs`, task 967 — `auris serve` and the transcribe path both fetch
-a missing default model unless `--no-download` is given). Not built: VAD
-segmentation and streaming (`docs/streaming.md`), and post-ASR correction
-(`docs/correction.md`). The invariants below describe what auris **must** do,
-read from `README.md` — the contract written before the code — not what it
-currently does. Check the source before relying on any of it.
+of the recognizer for silent audio (`audio::is_silent`, task 958), a Silero
+VAD gate immediately after it that filters non-speech audio before the
+recognizer ever sees it (`src/vad.rs`, task 968 — `--vad-*` / `--no-vad`),
+the recognizer (`src/engine.rs`), the vocabulary term list
+(`src/vocabulary.rs`), the one-shot transcribe path (`src/cli.rs`), and the
+daemon and its client (`src/daemon.rs`, task 951 — `auris serve` / `status`
+/ `stop`, documented in `docs/daemon.md`), and model downloading with sha256
+verification (`src/model.rs`, task 967 — `auris serve` and the transcribe
+path both fetch a missing default model, and now the VAD model too, unless
+`--no-download` is given). Not built: VAD *segmentation* and streaming — the
+`speech` heartbeat, multiple `segment` lines, endpointing (`docs/streaming.md`)
+— and post-ASR correction (`docs/correction.md`); task 968 shipped a gate,
+not segmentation, and output is still one transcript, exactly as before. The
+invariants below describe what auris **must** do, read from `README.md` —
+the contract written before the code — not what it currently does. Check the
+source before relying on any of it.
 
 ## Commands
 
@@ -109,5 +114,31 @@ them — decide which, don't let them silently drift.
   words on digital silence instead of returning nothing, so
   `audio::is_silent` gates on the decoded samples before the recognizer is
   invoked — client-side, so it also covers the daemon path (README "Exit
-  codes", `docs/daemon.md`). It is a fixed-threshold energy check, not VAD;
-  `docs/streaming.md`'s Silero VAD segmentation supersedes it later.
+  codes", `docs/daemon.md`). It is a fixed-threshold energy check, not VAD,
+  and it stays: the Silero VAD gate below is a heavier, model-based check
+  that answers a different question, not a replacement for this free one.
+- **Audio with no speech at all never reaches the recognizer, but audio
+  that does is decoded untouched.** Immediately after `is_silent`, the
+  Silero VAD gate (`src/vad.rs`, task 968) is a **decision, not a filter**:
+  no speech span found anywhere in the buffer means the recognizer never
+  runs (a fan, a cough, or TTS playback that passes the energy check gets
+  caught here); any speech span found means the recognizer decodes the
+  original samples, byte-for-byte, exactly as `is_silent` saw them — never
+  the trimmed spans Silero found. An earlier version fed the recognizer
+  only the concatenated speech spans and was reverted: Silero's span edges
+  are tuned for segmentation, not for an offline recognizer's acoustic
+  context, and trimming both corrupted real speech (35 of 40 benchmark
+  transcripts changed) and manufactured a hallucination on a noise clip
+  that decoded correctly when left whole. This is a deliberate departure
+  from mesa task 968's literal wording ("drop non-speech spans... transcribe
+  the speech spans only") in favor of its acceptance criterion (no accuracy
+  loss on real speech) — see README "Exit codes". `--vad-threshold`
+  defaults to 0.2, not Silero's own stock 0.5 (measured, not copied — see
+  README); `--vad-min-silence` does not exist as a flag, because it cannot
+  affect this gate's accept/reject decision at any value (it only affects
+  when a span closes, and the gate only asks whether one ever opened) — it
+  is a private constant in `src/vad.rs` instead. The gate is client-side,
+  like `is_silent`, so it covers the daemon path too; `--no-vad` is the
+  escape hatch. This is a single-utterance gate, not the segmentation
+  `docs/streaming.md` describes — no `speech` heartbeat, no multiple
+  `segment` lines — that remains unbuilt.

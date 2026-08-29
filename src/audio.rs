@@ -48,8 +48,14 @@ pub const TARGET_SAMPLE_RATE: u32 = 16_000;
 /// calibrated to catch "no signal arrived," not "quiet room" — there is no
 /// ambient-noise fixture in this repo to calibrate a room-tone threshold
 /// against, so don't read a pass here as a claim this handles real-world
-/// background noise. This is not VAD: `docs/streaming.md`'s Silero VAD
-/// segmentation is future work, and supersedes this gate once built.
+/// background noise. This is not VAD, and does not become one: task 968
+/// built a Silero VAD gate (`src/vad.rs`) that runs immediately after this
+/// one, not instead of it — `is_silent` is a free, model-free check with no
+/// session to load, so it stays as the cheap first pass ahead of the
+/// heavier model-based gate rather than being superseded by it.
+/// `docs/streaming.md`'s Silero VAD *segmentation* (multiple `segment`
+/// lines, a `speech` heartbeat) is still future work and unrelated to
+/// either gate.
 const SILENCE_RMS_THRESHOLD: f32 = 1e-3;
 
 /// Window size [`is_silent`] computes the max RMS over, in samples at

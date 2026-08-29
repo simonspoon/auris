@@ -81,11 +81,14 @@ Not bundled or redistributed here — fetched from the publisher on first
 | Component | Licence | Source |
 | --- | --- | --- |
 | Parakeet TDT 0.6B v2 weights (int8) | CC-BY-4.0 | [nvidia/parakeet-tdt-0.6b-v2](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2) (original), [csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8](https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8) (int8 re-upload auris fetches from) |
+| Silero VAD model (`silero_vad.onnx`) | MIT | [snakers4/silero-vad](https://github.com/snakers4/silero-vad) (original), [csukuangfj/vad](https://huggingface.co/csukuangfj/vad) (re-upload auris fetches from, sherpa-onnx's own author's repo) |
 
 CC-BY-4.0 requires attribution to NVIDIA when the model (or a derivative)
-is redistributed; this table is that attribution. Nothing here
-redistributes the weights themselves — auris only ever downloads them onto
-the machine that runs it.
+is redistributed; this table is that attribution. MIT requires only that
+its copyright notice travel with the software, which this table satisfies
+for the same reason it does for ONNX Runtime above — nothing here
+redistributes either the Parakeet weights or the Silero VAD model
+themselves, auris only ever downloads them onto the machine that runs it.
 
 ## A note on Cargo.toml
 

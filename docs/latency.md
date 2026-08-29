@@ -105,19 +105,25 @@ unimplementable.
 **2. The decode window, and the segment cap it forces.** Decode starts at
 t=500 ms and must finish by t=2000 ms, so it has **1500 ms**.
 
-That 500 ms is an assumption, and since every number in this section is
-derived from it, it is flagged rather than buried: it is the stock Silero
-`min_silence_duration`, and **no source in this repository records it** —
-`docs/streaming.md` names the knob and expressly leaves its value to the
-segmentation task, and the spike never ran a VAD at all. **NOT MEASURED
-HERE.** The first job of the segmentation task is to read the real default
-off `SileroVadModelConfig` and redo this arithmetic, because the window is
-`live.auto-send-ms` minus this number and the cap moves with it: at a
-0.25 s close the window is 1750 ms and the cap could rise, at 1.0 s it is
-1000 ms and `max_speech_duration = 8.0` **fails** at the 2x safety factor
-(8 s x 0.164 = 1312 ms > 1000 ms). The structural argument — that auris's
-work fits inside a wait mesa already performs — survives any of those
-values. The specific cap does not. At the
+That 500 ms was an assumption when this document was written, flagged
+rather than buried because every number in this section is derived from it.
+**Task 968 (the VAD gate) resolved it: `MIN_SILENCE_SECONDS` is 0.5 s**
+(`src/vad.rs`), Silero's own stock default, configured verbatim — auris
+does not override it. It is a private constant, not a CLI flag: it was
+swept from 0.05 s to 0.5 s and found to have zero effect on the gate's
+accept/reject decision at every value, because the gate only asks whether a
+speech span ever opens, never when one closes — so there is nothing here
+for a flag to tune. The arithmetic in this section therefore stands as
+written; nothing here needs to be redone. (Task 968 shipped the gate, not
+the segmentation this document's `min_silence_duration`-vs-`live.auto-send-ms`
+reconciliation is about — see "What this does not decide" below, which is
+still open.) For the counterfactual the rest of this section is worth
+keeping: the window is `live.auto-send-ms` minus this number and the cap
+moves with it — at a 0.25 s close the window is 1750 ms and the cap could
+rise, at 1.0 s it is 1000 ms and `max_speech_duration = 8.0` **fails** at
+the 2x safety factor (8 s x 0.164 = 1312 ms > 1000 ms). The structural
+argument — that auris's work fits inside a wait mesa already performs —
+survives any of those values. The specific cap does not. At the
 measured warm RTF of 0.082 (`spike/RESULTS.md` §6, parakeet + per-word
 hotwords) that decodes a final segment of up to **18.3 s** at no cost. But
 `spike/RESULTS.md` and `docs/engine.md` both warn the fixtures are macOS

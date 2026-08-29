@@ -127,6 +127,7 @@ crate).
 ```
 ~/.cache/auris/
   auris.sock                       # the daemon's socket (see "The daemon")
+  silero_vad.onnx                  # the VAD gate's model — see below
   models/
     parakeet-tdt-0.6b-v2-int8/
       encoder.int8.onnx
@@ -143,6 +144,15 @@ together and stay consistent with each other, so auris's unit is a
 model may be installed at once; a model directory is only considered installed
 when all five files are present, so a half-finished download is invisible to
 `--list-models` rather than being offered and then failing.
+
+`silero_vad.onnx` lives at `$AURIS_HOME` directly, a sibling of `auris.sock`
+and `models/`, not inside a model directory. That is deliberate, not an
+oversight: "a model is a directory of five files" is the invariant
+`--list-models`/`dir_is_complete` depend on to tell an installed model from a
+half-downloaded one, and folding a sixth, unrelated file into that directory
+would break it. The VAD is also model-independent — one VAD gates the input
+ahead of whichever recognizer `-m` selects — so it belongs at the level that
+outlives a model swap, not inside the thing that gets swapped.
 
 ### Environment
 
@@ -207,6 +217,25 @@ rather than LFS, so its sha256 is not published by the API — unlike the other
 three, this one is not checked against a digest upstream publishes. The digest
 above was computed from the bytes actually served at that commit, and is
 auris's own pin.
+
+#### The Silero VAD model
+
+Fetched from `csukuangfj/vad`, commit
+`fba88cd2e921609e7675c3aaf51e0b9b295da4bc` — sherpa-onnx's own author's repo,
+chosen for the identical reason as the parakeet repo above: HuggingFace
+publishes the sha256 as the LFS `oid`, so the digest comes from upstream
+rather than being one auris made up.
+
+| File | Bytes | sha256 |
+| --- | --- | --- |
+| `silero_vad.onnx` | 1,807,522 | `a35ebf52fd3ce5f1469b2a36158dba761bc47b973ea3382b3186ca15b1f5af28` |
+
+It goes through the identical verified-write path the parakeet files do:
+stream to `<name>.part`, verify size and sha256, atomic rename into place —
+see "Verification" below. `auris serve` fetches it alongside the parakeet
+model, so "run `auris serve` once after install" (see "Getting the model")
+remains the complete install-time fetch step; a transcribe run fetches it too
+if `auris serve` was never run first.
 
 ### Getting the model
 
@@ -405,15 +434,106 @@ or started. `2` means a bad flag value, an unknown model name, or (mirroring
 kokoro-rs's stdin rule above) no `PATH` given while stdin is a terminal.
 `130` is Ctrl-C.
 
-Silent audio needs its own gate to actually get to exit 1: the real
-Parakeet model doesn't reliably return an empty transcript on silence, it
-hallucinates a word or two ("Okay.", observed on 1 s of digital silence)
+Silent, or merely non-speech, audio needs its own gates to actually get to
+exit 1: the real Parakeet model doesn't reliably return an empty transcript
+on silence or noise, it hallucinates a word or two ("Okay.", "Yeah.",
+observed on digital silence and on a fan, a chair, a cough, TTS playback)
 instead. Trusting the recognizer's output alone would let that hallucinated
 text out at exit 0, which is worse than an empty transcript at exit 1 —
-mesa's driver would treat it as something the user actually said. So auris
-runs a cheap energy gate over the decoded samples before the recognizer is
-reached at all (`audio::is_silent`), and exits `NOTHING_TRANSCRIBED`
-directly when nothing but near-zero signal arrived, model or no model.
+mesa's driver would treat it as something the user actually said (mesa
+session 37: three consecutive turns transcribed as nothing but "Yeah.",
+none of them spoken by the person). So there are now two gates ahead of the
+recognizer, run in sequence, each capable of exiting `NOTHING_TRANSCRIBED`
+on its own:
+
+1. A cheap energy gate over the decoded samples (`audio::is_silent`) —
+   pure arithmetic, no model to load, and it catches digital silence for
+   free. It answers "is there any signal at all," nothing more refined.
+2. The Silero VAD gate (`--vad-*` below) — a small model that answers the
+   different question the energy gate can't: is this signal *speech*, at
+   all, anywhere in it. It is a **decision, not a filter**: if Silero finds
+   no speech span whatsoever, the recognizer never runs. If it finds even
+   one, the recognizer decodes the **original samples, completely
+   untouched** — not the spans Silero found, the whole buffer exactly as
+   `is_silent` saw it.
+
+That second sentence is not the obvious design, and the obvious one was
+tried first and rejected on evidence, not preference: an earlier version of
+this gate concatenated only the speech spans Silero found and handed the
+recognizer that trimmed buffer. It made things worse in both directions.
+Silero's span boundaries are tuned for segmentation, where whatever consumes
+a span adds its own padding and the exact edge doesn't matter much; Parakeet
+is an *offline* recognizer decoding a single buffer, where acoustic context
+right at the edge of the audio is load-bearing. Trimming 166 ms off the
+front of one real-speech fixture turned "mesa" into "Nessa" and "khora" into
+"Cora"; across a 40-clip benchmark corpus, 35 of 40 transcripts changed
+merely from being trimmed to Silero's idea of where speech starts and ends.
+Worse, trimming *created* the exact failure mode this gate exists to
+prevent: a 4 s clip of pure background noise correctly decodes to nothing
+when the recognizer sees the whole clip, but Silero false-positives a
+0.55 s span inside it, and narrowing the audio down to just that span is
+what makes Parakeet hallucinate "Uh" — the isolated-fragment problem
+`audio::is_silent`'s own doc comment already describes for digital silence,
+reproduced by the very gate meant to guard against it.
+
+So the gate answers one yes/no question and otherwise gets out of the way.
+The payoff is a guarantee stronger than a benchmark number: on any audio
+Silero finds speech in, **auris's transcript is byte-identical to a
+`--no-vad` run** — not "measured close," but true by construction, because
+the recognizer is handed the same bytes either way. Confirmed empirically
+too, not just structurally: across all 40 acoustic recordings plus the
+marginal fixture, run through the real binary with hotword biasing on,
+**0 of 41 transcripts differ from `--no-vad`**.
+
+Byte-identical output also means Silero's precision no longer has to be
+very good: a false positive costs one wasted decode that comes back empty
+(still exit `NOTHING_TRANSCRIBED`, just paid for at the recognizer instead
+of at Silero), never a wrong transcript. That is what lets
+`--vad-threshold`'s default sit at **0.2, not Silero's own stock 0.5**: a
+sweep from 0.5 down to 0.05 against 43 real-speech files (the 40-clip
+corpus plus the marginal, `mesa-names.wav`, and `plain.wav` fixtures) found
+that 0.5 rejects `u17.wav` outright — a genuinely quiet but real spoken
+clip — while every value from 0.10 to 0.38 accepts all 43 and still rejects
+white noise, rumble, and silence cleanly. 0.2 is the middle of that band,
+not an edge of it. `--vad-min-silence` was swept the same way, from 0.05 s
+to 0.5 s, and dropped from the CLI entirely: it controls only *when* an
+already-open speech span closes, and this gate only asks whether one ever
+opens, so it provably could not change the accept/reject decision at any
+value tested — a knob that cannot change any outcome is not a flag, it is
+0.5 s (Silero's stock value) fixed as a private constant in `src/vad.rs`.
+`--no-vad` skips the gate entirely — for audio that is already known to be
+speech, or to compare against no VAD at all.
+
+One gap this sweep did not close, and could not: `nonspeech-transient.wav`,
+a synthetic noise burst, is not separable from real speech at any threshold
+tried, down to 0.05 — Silero reports a confident ~0.55 s speech span in it
+regardless. So of the four non-speech fixtures this task tested, **three
+are rejected by the gate (white noise, rumble, digital silence) and one is
+not.** That is not a regression: unbiased, the full clip still decodes to
+empty and exits 1 at the third `NOTHING_TRANSCRIBED` site below, exactly as
+it did before this gate existed, because `has_speech() == true` still hands
+the recognizer the untouched original samples — a VAD-on and a `--no-vad`
+run on this clip are byte-identical, same as every other file. But with a
+vocabulary file loaded — mesa's actual production configuration — that
+empty decode becomes a long hallucinated string instead, which is a real,
+user-visible leak under real settings. Closing it was not attempted here:
+the threshold that separates this clip from real speech does not exist in
+the range tested, and the alternative — an invented heuristic distinct from
+Silero's own decision — would risk eating genuinely short real utterances
+like "yes." It is recorded as a known, pre-existing gap task 968 does not
+close, not one it introduces.
+
+This is a deliberate, and considered, departure from mesa task 968's
+original wording, which asked auris to "drop non-speech spans, and
+concatenate or transcribe the speech spans only." That clause was a means;
+the acceptance criterion — no measurable accuracy loss on real speech — was
+the end, and the means defeated the end, for the reasons measured above.
+auris implements the end, not the clause.
+
+All three sites that can produce `NOTHING_TRANSCRIBED` — `is_silent`, the
+VAD gate, and the recognizer itself returning an empty decode — print the
+same wording, so there is one thing for mesa to match on, not three; each
+adds its own verbose-only stderr line naming which one fired.
 
 The consequence for mesa: a nonzero exit means "there is no transcript," the
 same rule `speech.rs` already applies to kokoro-rs — a failed render is not
@@ -431,6 +551,9 @@ landed on stdout, never as the primary signal.
 | `--format text\|json` | Output shape (default `text`). See `--format json` below. |
 | `--no-download` | Fail rather than fetch a missing model on a real run; `--list-models` is always offline, flag or not. |
 | `--list-models` | Print installed model names, one per line, and exit. |
+| `--vad-threshold F` | Silero VAD speech-probability threshold (default `0.2` — not Silero's own stock 0.5; see below). Out of `0.0..=1.0` is a usage error. |
+| `--vad-min-speech SECS` | Speech spans shorter than this are dropped (default `0.25`, Silero's stock value). Negative or non-finite is a usage error. |
+| `--no-vad` | Skip the VAD gate — for audio that is already segmented, or to measure accuracy against no VAD at all. Transcribe-path only; `auris serve` has no VAD flags because the gate is client-side. |
 | `--no-daemon` | Load the recognizer in-process for this call instead of talking to a daemon; pays the ~4 s load every time. |
 | `--socket PATH` | Daemon socket path (default `$AURIS_HOME/auris.sock`). |
 | `-q, --quiet` | Suppress the progress line (stderr is already silent when not a terminal). |

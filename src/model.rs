@@ -16,7 +16,7 @@
 
 use std::fs::File;
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use sha2::{Digest, Sha256};
@@ -60,6 +60,26 @@ const MODEL_FILES: [ModelFile; 4] = [
 
 /// `bpe.vocab` is generated locally, never downloaded (README "`bpe.vocab`").
 const BPE_VOCAB_FILENAME: &str = "bpe.vocab";
+
+/// The HuggingFace repo and pinned commit the Silero VAD model is fetched
+/// from — sherpa-onnx's own author's repo, chosen for the same reason as
+/// `HF_REPO`: it publishes an LFS `oid` a GitHub release asset would not.
+const VAD_HF_REPO: &str = "csukuangfj/vad";
+const VAD_HF_COMMIT: &str = "fba88cd2e921609e7675c3aaf51e0b9b295da4bc";
+
+/// Filename of the Silero VAD model inside `$AURIS_HOME`. It is a top-level
+/// cache asset, not part of a model directory — `dir_is_complete` defines
+/// "installed" as exactly the four downloaded files plus `bpe.vocab`, and
+/// the VAD is model-independent (one VAD serves every recognizer).
+pub const VAD_FILENAME: &str = "silero_vad.onnx";
+
+/// The Silero VAD model's pinned size and digest, same shape and same
+/// provenance discipline as [`MODEL_FILES`].
+const VAD_FILE: ModelFile = ModelFile {
+    name: VAD_FILENAME,
+    bytes: 1_807_522,
+    sha256: "a35ebf52fd3ce5f1469b2a36158dba761bc47b973ea3382b3186ca15b1f5af28",
+};
 
 /// Bytes read per chunk while streaming a download to disk.
 const CHUNK_SIZE: usize = 64 * 1024;
@@ -138,6 +158,12 @@ fn download_url(file: &str) -> String {
     format!("https://huggingface.co/{HF_REPO}/resolve/{HF_COMMIT}/{file}")
 }
 
+/// Where the Silero VAD model is fetched from — same URL shape as
+/// [`download_url`], different repo and commit.
+fn vad_download_url() -> String {
+    format!("https://huggingface.co/{VAD_HF_REPO}/resolve/{VAD_HF_COMMIT}/{VAD_FILENAME}")
+}
+
 /// Line n (1-based) of `tokens.txt` becomes `<piece> <-(n-1)>`, where
 /// `<piece>` is the first whitespace-separated field — equivalent to `awk
 /// '{printf "%s %d\n", $1, -NR+1}' tokens.txt` (README "`bpe.vocab`").
@@ -163,21 +189,27 @@ fn dir_is_complete(dir: &Path) -> bool {
         && dir.join(BPE_VOCAB_FILENAME).is_file()
 }
 
-/// Streams one pinned file from HuggingFace into `staging/<file>.part`,
-/// verifying size and sha256 as the last chunk lands, then renames it to
+/// Streams one pinned file from `url` into `staging/<file>.part`, verifying
+/// size and sha256 as the last chunk lands, then renames it to
 /// `staging/<file>`. A mismatch deletes the `.part` and returns an error —
 /// nothing that fails verification is ever left where a later run would
-/// trust it (README "Verification").
-fn download_one(staging: &Path, file: &ModelFile, verbose: bool) -> Result<(), ModelError> {
+/// trust it (README "Verification"). The URL is a parameter rather than
+/// computed from `file` so this same verified-write body serves both the
+/// parakeet model files ([`download_url`]) and the Silero VAD model
+/// ([`vad_download_url`]) without duplicating the streaming/hashing loop.
+fn download_one(
+    staging: &Path,
+    file: &ModelFile,
+    url: &str,
+    verbose: bool,
+) -> Result<(), ModelError> {
     let part_path = staging.join(format!("{}.part", file.name));
     let final_path = staging.join(file.name);
 
-    let resp = ureq::get(&download_url(file.name))
-        .call()
-        .map_err(|e| ModelError::Request {
-            file: file.name,
-            source: e.to_string(),
-        })?;
+    let resp = ureq::get(url).call().map_err(|e| ModelError::Request {
+        file: file.name,
+        source: e.to_string(),
+    })?;
     let status = resp.status();
     if !(200..300).contains(&status) {
         return Err(ModelError::Status {
@@ -315,7 +347,7 @@ pub fn ensure_installed(model_dir: &Path, verbose: bool) -> Result<(), ModelErro
 
     let result = (|| {
         for file in &MODEL_FILES {
-            download_one(&staging, file, verbose)?;
+            download_one(&staging, file, &download_url(file.name), verbose)?;
         }
         generate_bpe_vocab(&staging)?;
         Ok(())
@@ -331,6 +363,31 @@ pub fn ensure_installed(model_dir: &Path, verbose: bool) -> Result<(), ModelErro
         return Err(e);
     }
     Ok(())
+}
+
+/// Where the Silero VAD model lives: `<auris_home>/silero_vad.onnx`.
+pub fn vad_model_path(auris_home: &Path) -> PathBuf {
+    auris_home.join(VAD_FILENAME)
+}
+
+/// Fetches the Silero VAD model into `auris_home` if it is not already
+/// present at its pinned size. A truncated or otherwise wrong-size file is
+/// treated as absent and re-downloaded rather than trusted (README
+/// "Verification") — the same convention [`ensure_installed`] follows for
+/// the parakeet files, just without a staging directory: the VAD is a
+/// single file living directly under `$AURIS_HOME`, not inside `models/`.
+pub fn ensure_vad_installed(auris_home: &Path, verbose: bool) -> Result<(), ModelError> {
+    let path = vad_model_path(auris_home);
+    let already_installed = std::fs::metadata(&path)
+        .map(|m| m.len() == VAD_FILE.bytes)
+        .unwrap_or(false);
+    if already_installed {
+        return Ok(());
+    }
+
+    std::fs::create_dir_all(auris_home)
+        .map_err(io_err(format!("failed to create {}", auris_home.display())))?;
+    download_one(auris_home, &VAD_FILE, &vad_download_url(), verbose)
 }
 
 #[cfg(test)]
@@ -447,5 +504,54 @@ mod tests {
         std::fs::remove_file(&part_path).unwrap();
         assert!(!staging.join("tokens.txt").exists());
         assert!(!part_path.exists());
+    }
+
+    #[test]
+    fn vad_pinned_constants_have_not_drifted() {
+        assert_eq!(VAD_FILENAME, "silero_vad.onnx");
+        assert_eq!(VAD_HF_COMMIT, "fba88cd2e921609e7675c3aaf51e0b9b295da4bc");
+        assert_eq!(VAD_FILE.bytes, 1_807_522);
+        assert_eq!(
+            VAD_FILE.sha256,
+            "a35ebf52fd3ce5f1469b2a36158dba761bc47b973ea3382b3186ca15b1f5af28"
+        );
+    }
+
+    #[test]
+    fn vad_model_path_composes_auris_home_and_filename() {
+        let home = PathBuf::from("/tmp/auris-home");
+        assert_eq!(vad_model_path(&home), home.join("silero_vad.onnx"));
+    }
+
+    #[test]
+    fn ensure_vad_installed_is_a_no_op_when_already_correct_size() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path();
+        let path = vad_model_path(home);
+        let stub = vec![0u8; VAD_FILE.bytes as usize];
+        std::fs::write(&path, &stub).unwrap();
+
+        // No network reachable in this test process, so a real fetch attempt
+        // would fail — the fact that this returns Ok(()) and leaves the
+        // stub bytes untouched proves the size check short-circuited before
+        // any download.
+        ensure_vad_installed(home, false).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), stub);
+    }
+
+    /// A wrong-size existing file must not be trusted (README
+    /// "Verification"), so `ensure_vad_installed` re-downloads over it — a
+    /// real ~1.8 MB fetch from huggingface.co, hence `#[ignore]`d like
+    /// `tests/errors.rs`'s network-backed cases.
+    #[test]
+    #[ignore = "performs a real download from huggingface.co"]
+    fn ensure_vad_installed_replaces_a_wrong_size_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path();
+        let path = vad_model_path(home);
+        std::fs::write(&path, b"truncated").unwrap();
+
+        ensure_vad_installed(home, false).unwrap();
+        assert_eq!(std::fs::metadata(&path).unwrap().len(), VAD_FILE.bytes);
     }
 }
