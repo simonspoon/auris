@@ -459,72 +459,46 @@ mod tests {
     /// false. Of the four non-speech fixtures, three are rejected by the gate
     /// and this one is not (README "Exit codes").
     ///
-    /// What this pins is the one thing that stays true regardless: because
-    /// `has_speech` returns a `bool` rather than a modified buffer, the
-    /// decode this test runs against the untouched samples is exactly what
-    /// `--no-vad` would produce for the same clip (confirmed against the real
-    /// binary — task 968) — with hotwords (mesa's actual production
-    /// configuration) that is a long hallucinated string, a real,
-    /// user-visible leak, but one that is unchanged from pre-VAD auris, which
+    /// The gate still cannot corrupt this clip: `has_speech` returns a `bool`
+    /// rather than a buffer, so the recognizer is handed the untouched
+    /// original samples and a VAD-on run is byte-identical to `--no-vad`.
+    /// That equality was confirmed against the real binary (task 968: 286
+    /// bytes each way, hotword-biased) — it is deliberately NOT asserted
+    /// here, because within this process both sides would be the same
+    /// `decode_with_hotwords` call on the same slice, which is a tautology
+    /// that can only fail if the recognizer is nondeterministic. The claim
+    /// lives at the CLI level, so it is checked there, not faked here.
+    ///
+    /// What the recognizer then does with the whole clip is outside this
+    /// gate's reach: unbiased it decodes to nothing and exits 1; **with
+    /// hotwords it produces a long hallucinated string**, a real,
+    /// user-visible leak under mesa's actual production configuration
+    /// (tracked separately). That leak is unchanged from pre-VAD auris, which
     /// is why it is a known gap this task does not close rather than a
     /// regression it introduces.
     ///
-    /// This deliberately does NOT assert the decode is empty (true only
-    /// without a vocabulary file — asserting it here would tell a future
-    /// reader the case is handled when it is not) or assert the hallucinated
-    /// text itself (would enshrine a defect as expected behaviour and rot the
-    /// moment the string drifted). Instead it decodes the clip twice — once
-    /// standing in for `--no-vad`, once gated behind `has_speech` — and
-    /// checks they still agree; that fails loudly the moment anyone
-    /// reintroduces trimming, which is exactly what changed this clip's
-    /// decode in the first place.
+    /// This asserts only the detection, deliberately. Asserting the decode is
+    /// empty would hold only without a vocabulary file and would tell a
+    /// future reader the case is handled when it is not; asserting the
+    /// hallucinated text would enshrine a defect as expected behaviour and
+    /// rot the moment the string drifted.
     #[test]
-    fn transient_false_positive_is_unchanged_by_the_vad_gate() {
-        let Some(vad_model) = vad_model_path() else {
+    fn transient_noise_is_a_known_silero_false_positive() {
+        let Some(model) = vad_model_path() else {
             return;
         };
-        let Some(model_dir) = spike_model_dir() else {
-            return;
-        };
-        let tmp = symlinked_model_dir(&model_dir);
-        let hotwords_path =
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("spike/fixtures/hotwords.txt");
-        let hotwords = std::fs::read_to_string(&hotwords_path)
-            .expect("read fixture hotwords")
-            .lines()
-            .map(str::trim)
-            .filter(|line| !line.is_empty())
-            .collect::<Vec<_>>()
-            .join("/");
-
         let vad = Vad::load(&VadConfig {
-            model: vad_model,
+            model,
             ..Default::default()
         })
-        .expect("load vad");
+        .expect("load");
+
         let samples = decode_fixture("nonspeech-transient.wav");
         assert!(
             vad.has_speech(&samples),
             "this test documents a known Silero false positive on this fixture; \
              if this now fails, Silero (or the threshold) changed for the better \
              and the module doc comment's point 2 needs re-checking, not deleting"
-        );
-
-        let recognizer = crate::engine::Recognizer::load(&crate::engine::EngineConfig {
-            model_dir: tmp.path().to_path_buf(),
-            ..Default::default()
-        })
-        .expect("load recognizer");
-        let no_vad_text = recognizer
-            .decode_with_hotwords(&samples, &hotwords)
-            .expect("decode --no-vad equivalent");
-        let gated_text = recognizer
-            .decode_with_hotwords(&samples, &hotwords)
-            .expect("decode VAD-gated");
-        assert_eq!(
-            no_vad_text, gated_text,
-            "VAD-gated and --no-vad decodes of the transient fixture diverged — \
-             the gate must never change what the recognizer sees"
         );
     }
 
