@@ -17,9 +17,10 @@ of the recognizer for silent audio (`audio::is_silent`, task 958), the
 recognizer (`src/engine.rs`), the vocabulary term list (`src/vocabulary.rs`),
 the one-shot transcribe path (`src/cli.rs`), and the daemon and its client
 (`src/daemon.rs`, task 951 — `auris serve` / `status` / `stop`, documented in
-`docs/daemon.md`). Not built: model downloading and sha256 verification (so
-`auris serve` does not yet fetch a missing model), VAD segmentation and
-streaming (`docs/streaming.md`), and post-ASR correction
+`docs/daemon.md`), and model downloading with sha256 verification
+(`src/model.rs`, task 967 — `auris serve` and the transcribe path both fetch
+a missing default model unless `--no-download` is given). Not built: VAD
+segmentation and streaming (`docs/streaming.md`), and post-ASR correction
 (`docs/correction.md`). The invariants below describe what auris **must** do,
 read from `README.md` — the contract written before the code — not what it
 currently does. Check the source before relying on any of it.

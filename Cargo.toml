@@ -15,7 +15,9 @@ ctrlc = "3"
 hound = "3.5.1"
 rubato = "5.0.0"
 serde_json = "1"
+sha2 = "0.10"
 sherpa-onnx = "=1.13.6"
+ureq = { version = "2.12", features = ["proxy-from-env"] }
 
 [dev-dependencies]
 tempfile = "3"

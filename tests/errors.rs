@@ -96,25 +96,25 @@ fn silence_wav_1s() -> Vec<u8> {
     wav_bytes(16_000, 1, &vec![0i16; 16_000])
 }
 
-/// mesa needs to tell a caller "you haven't fetched the model" apart from
-/// every other failure, so it can point at `auris serve` instead of a
-/// generic decode error. Pins that message for the default (fetch-capable)
-/// path, where model download simply isn't implemented yet.
+/// Without `--no-download`, a missing default model triggers a real fetch
+/// (README "Getting the model") — a ~661 MB download from HuggingFace, so
+/// this is intentionally `#[ignore]`d rather than run by every `cargo test`.
+/// Run it explicitly with `cargo test -- --ignored
+/// missing_default_model_without_no_download` when network-backed
+/// verification of the fetch path is wanted; `cargo test` covers the
+/// network-free refusal path via `missing_default_model_with_no_download`.
 #[test]
+#[ignore = "performs a real ~661 MB download from huggingface.co"]
 fn missing_default_model_without_no_download() {
     let out = run_auris(&["--no-daemon", "--quiet"], &small_valid_wav());
-    assert_eq!(out.status.code(), Some(1));
-    assert!(out.stdout.is_empty());
-    let stderr = assert_single_line_stderr(&out.stderr);
-    assert!(stderr.contains("parakeet-tdt-0.6b-v2-int8"));
-    assert!(stderr.contains("is not installed"));
-    assert!(stderr.contains("auris serve"));
+    assert_eq!(out.status.code(), Some(0));
+    assert!(!out.stdout.is_empty());
 }
 
-/// Same missing-model case with `--no-download` set: today there is no
-/// fetch for the flag to refuse, so the message and exit code must match
-/// the without-`--no-download` case exactly (see `src/cli.rs`
-/// `run_transcribe`'s comment on this).
+/// mesa needs to tell a caller "you haven't fetched the model" apart from
+/// every other failure, so it can point at `auris serve` instead of a
+/// generic decode error. Pins that message for the `--no-download` refusal
+/// path, which never touches the network.
 #[test]
 fn missing_default_model_with_no_download() {
     let out = run_auris(

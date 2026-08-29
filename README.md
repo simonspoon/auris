@@ -297,10 +297,13 @@ was expected at, and `auris serve` as the way to fetch it, the same shape
 kokoro-rs's own message takes (`models.rs:93-99`). No daemon is started and no
 encoder is loaded.
 
-**Without `--no-download`, a real run fetches what is missing first**, in
-whichever process is about to load the recognizer — `auris serve`, the daemon
-a client auto-starts, or a `--no-daemon` run — with progress on that process's
-stderr only when it is a terminal.
+**Without `--no-download`, a real run fetches what is missing first**, with
+progress on that process's stderr only when it is a terminal. `auris serve`
+and a `--no-daemon` run fetch in the process that is about to load the
+recognizer; a client that would auto-start a daemon fetches in itself first,
+before spawning one — the daemon-spawn reachability timeout is too short for
+a ~661 MB download, and the client's stderr is the terminal the caller is
+actually watching.
 
 mesa's synthesis path spawns kokoro-rs *without* `--no-download`
 (`speech.rs:163-169`) and never times the child out, so the first render on a

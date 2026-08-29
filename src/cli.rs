@@ -20,6 +20,7 @@ use clap::{Parser, ValueEnum};
 use crate::audio;
 use crate::daemon;
 use crate::engine::{EngineConfig, Recognizer};
+use crate::model;
 use crate::vocabulary::Vocabulary;
 
 /// Exit codes, copied from kokoro-rs (README "Exit codes"), not reinvented.
@@ -134,12 +135,8 @@ struct ServeArgs {
     #[arg(short, long)]
     quiet: bool,
 
-    // Accepted for symmetry with the bare-invocation flag of the same name;
-    // model downloading is not implemented in either path yet (see the
-    // missing-default-model message in `run_serve`).
     /// Fail rather than fetch a missing model on a real run
     #[arg(long)]
-    #[allow(dead_code)]
     no_download: bool,
 }
 
@@ -347,22 +344,31 @@ fn run_transcribe(args: Args) -> i32 {
     let model_dir = match source {
         ModelSource::Default(path) => {
             if !model_dir_is_complete(&path) {
-                // Automatic fetching (README "Getting the model") is not
-                // implemented here — it lands with the model-download work
-                // — so a missing default model takes this exit-1 path
-                // regardless of --no-download today: there is no fetch for
-                // the flag to refuse.
-                eprintln!(
-                    "auris: model {DEFAULT_MODEL_NAME} is not installed at {}; run `auris serve` to fetch it",
-                    path.display()
-                );
-                return NOTHING_TRANSCRIBED;
+                if args.no_download {
+                    eprintln!(
+                        "auris: model {DEFAULT_MODEL_NAME} is not installed at {}; run without --no-download, or run `auris serve`, to fetch it",
+                        path.display()
+                    );
+                    return NOTHING_TRANSCRIBED;
+                }
+                // The client fetches in its own process, before it spawns or
+                // contacts the daemon: a spawned daemon only gets
+                // CLIENT_CONNECT_TIMEOUT (README "The daemon",
+                // src/daemon.rs) to become reachable, far too short for a
+                // ~661 MB download, and this process's stderr is the
+                // terminal the caller is actually watching.
+                if let Err(e) = model::ensure_installed(&path, verbose) {
+                    eprintln!("auris: {e}");
+                    return NOTHING_TRANSCRIBED;
+                }
             }
             path
         }
         // A name or path the caller gave explicitly: let Recognizer::load's
         // own validation (missing dir, missing file, missing bpe.vocab) do
-        // the checking, so its USAGE-error messages stay in one place.
+        // the checking, so its USAGE-error messages stay in one place. An
+        // explicit -m/AURIS_MODEL is never a trigger to download (README
+        // "Which model, and `-m`").
         ModelSource::Explicit(path) => path,
     };
     if interrupt.load(Ordering::SeqCst) {
@@ -538,11 +544,17 @@ fn run_serve(args: ServeArgs) -> i32 {
     let model_dir = match source {
         ModelSource::Default(path) => {
             if !model_dir_is_complete(&path) {
-                eprintln!(
-                    "auris: model {DEFAULT_MODEL_NAME} is not installed at {}; model download is not implemented yet, pass -m with a complete model directory",
-                    path.display()
-                );
-                return NOTHING_TRANSCRIBED;
+                if args.no_download {
+                    eprintln!(
+                        "auris: model {DEFAULT_MODEL_NAME} is not installed at {}; run without --no-download to fetch it",
+                        path.display()
+                    );
+                    return NOTHING_TRANSCRIBED;
+                }
+                if let Err(e) = model::ensure_installed(&path, verbose) {
+                    eprintln!("auris: {e}");
+                    return NOTHING_TRANSCRIBED;
+                }
             }
             path
         }
