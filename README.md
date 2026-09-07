@@ -399,16 +399,22 @@ also what makes a payload beginning with `-o` or any other flag-shaped byte
 harmless: audio bytes are never parsed as arguments, because they are never
 handed to the argument parser at all.
 
-Audio is read to EOF before decoding, because Parakeet is an *offline*
-recognizer — it decodes a whole utterance and cannot emit a hypothesis for
-audio it has not yet seen the end of. What auris promises instead is that
+An *utterance* is read to EOF before decoding, because Parakeet is an
+*offline* recognizer — it decodes a whole utterance and cannot emit a
+hypothesis for audio it has not yet seen the end of. The stream is not:
 **stdout's first byte does not wait for stdin's EOF on a multi-utterance
-stream**: incoming audio is segmented into utterances as they complete, and
-each utterance's text is flushed to stdout as soon as that utterance ends.
-For a single short recording (the common case: one WAV, one utterance) this
-collapses to "auris reads it all, then writes the transcript" — there is
-nothing to flush early. The segmentation itself — where an utterance boundary
-falls — is decided in `docs/streaming.md`; see Notes below.
+stream**. Incoming audio is segmented into utterances as they complete
+(Silero VAD, `--vad-min-silence` of trailing quiet ends one), and each
+utterance's text is flushed to stdout as soon as the *next* utterance
+begins — a closed utterance's right edge is where the following one starts,
+which is what lets the recognizer keep the acoustic context on both sides
+of it that `--vad-*` below explains is load-bearing. For a single short
+recording (the common case: one WAV, one utterance) this collapses to
+"auris reads it all, then writes the transcript" — there is nothing to
+flush early, and the recognizer is handed the whole buffer, byte for byte,
+exactly as it was before segmentation existed. The segmentation itself —
+where an utterance boundary falls — is decided in `docs/streaming.md`; see
+Notes below.
 
 ### stdout
 
@@ -450,6 +456,19 @@ or started. `2` means a bad flag value, an unknown model name, or (mirroring
 kokoro-rs's stdin rule above) no `PATH` given while stdin is a terminal.
 `130` is Ctrl-C.
 
+Two ordering notes, because they are the kind of thing a caller pins a test
+to. Everything that can be judged without looking at the audio — a bad flag
+value, a `--vocabulary-file` that fails "Validation" in
+`docs/vocabulary.md`, a model directory missing a file — is judged *before*
+the audio is read, so a bad vocabulary file exits `2` even when the audio
+behind it was silent (segmentation moved this ahead of the gates; it used
+to exit `1`). Only the WAV *header* is parsed ahead of that, so "input was
+empty" and "not a wav file" still precede everything. The same reordering
+means `--no-daemon` loads the recognizer before reading the audio, so a
+silent clip now pays that ~4 s load even though the recognizer will never
+be run on it — the price of not putting "this model directory is broken"
+behind the audio.
+
 Silent, or merely non-speech, audio needs its own gates to actually get to
 exit 1: the real Parakeet model doesn't reliably return an empty transcript
 on silence or noise, it hallucinates a word or two ("Okay.", "Yeah.",
@@ -470,9 +489,12 @@ and answers a different question entirely — see below.
    different question the energy gate can't: is this signal *speech*, at
    all, anywhere in it. It is a **decision, not a filter**: if Silero finds
    no speech span whatsoever, the recognizer never runs. If it finds even
-   one, the recognizer decodes the **original samples, completely
-   untouched** — not the spans Silero found, the whole buffer exactly as
-   `is_silent` saw it.
+   one, the recognizer decodes **slices of the original samples cut at
+   *neighbouring* utterance boundaries** — never the spans Silero found. On
+   a single-utterance recording that slice is the whole buffer, exactly as
+   `is_silent` saw it; on a stream of several it is a partition of that
+   buffer, so every sample is decoded exactly once and no utterance is
+   cropped to Silero's idea of where it starts.
 
 That second sentence is not the obvious design, and the obvious one was
 tried first and rejected on evidence, not preference: an earlier version of
@@ -493,14 +515,24 @@ what makes Parakeet hallucinate "Uh" — the isolated-fragment problem
 `audio::is_silent`'s own doc comment already describes for digital silence,
 reproduced by the very gate meant to guard against it.
 
-So the gate answers one yes/no question and otherwise gets out of the way.
-The payoff is a guarantee stronger than a benchmark number: on any audio
-Silero finds speech in, **auris's transcript is byte-identical to a
-`--no-vad` run** — not "measured close," but true by construction, because
-the recognizer is handed the same bytes either way. Confirmed empirically
-too, not just structurally: across all 40 acoustic recordings plus the
-marginal fixture, run through the real binary with hotword biasing on,
-**0 of 41 transcripts differ from `--no-vad`**.
+So the gate never decides where audio gets cut; it decides only whether the
+recognizer runs, and where one utterance ends. The payoff is a guarantee
+stronger than a benchmark number: on any **single-utterance** audio Silero
+finds speech in, auris's transcript is byte-identical to a `--no-vad` run —
+not "measured close," but true by construction, because one utterance means
+one slice, and one slice means the whole buffer.
+
+Segmentation is where that stops being a byte-for-byte identity and starts
+being a measurement, because a stream cut into several utterances is
+genuinely decoded as several buffers. Measured on the same 40-clip corpus,
+biased, `--no-vad` against the shipped segmenting default: 33 of 40
+transcripts are byte-identical and 7 differ, all of them long dictations
+with a pause inside them, and the differences are overwhelmingly where a
+sentence break lands rather than which words were heard. Scored rather than
+eyeballed, segmentation is a wash to slightly better — **WER 6.32% →
+6.12%**, name F1 **69.2% → 69.2%** (unchanged, term for term), sentence
+boundary F1 **0.176 → 0.186**. The accuracy claim this design has to make
+is "segmenting costs nothing," and that is what those numbers say.
 
 Byte-identical output also means Silero's precision no longer has to be
 very good: a false positive costs one wasted decode that comes back empty
@@ -513,13 +545,21 @@ that 0.5 rejects `u17.wav` outright — a genuinely quiet but real spoken
 clip — while every value from 0.10 to 0.38 accepts all 43 and still rejects
 white noise, rumble, and silence cleanly. 0.2 is the middle of that band,
 not an edge of it. `--vad-min-silence` was swept the same way, from 0.05 s
-to 0.5 s, and dropped from the CLI entirely: it controls only *when* an
-already-open speech span closes, and this gate only asks whether one ever
-opens, so it provably could not change the accept/reject decision at any
-value tested — a knob that cannot change any outcome is not a flag, it is
-0.5 s (Silero's stock value) fixed as a private constant in `src/vad.rs`.
-`--no-vad` skips the gate entirely — for audio that is already known to be
-speech, or to compare against no VAD at all.
+to 0.5 s, and under the accept/reject gate alone it was deliberately *not*
+a flag: it controls only *when* an already-open speech span closes, and a
+gate that only asks whether one ever opens could not be changed by it at
+any value tested. Segmentation makes it load-bearing for the first time —
+it is now exactly the rule for where one `segment` line stops and the next
+begins — so it **is** a flag now, defaulting to the same 0.5 s (Silero's
+stock value, and the number `docs/latency.md`'s backdating arithmetic is
+written against). Zero or negative is a usage error: no trailing silence
+does not mean "no minimum," it means a span that never closes, and so a
+stream that never produces a `segment` line at all. Reconciling this
+default with mesa's own `live.auto-send-ms` is explicitly still open
+(`docs/latency.md`, "What this does not decide"). `--no-vad` skips the VAD
+entirely — for audio that is already known to be one utterance of speech,
+or to compare against no VAD at all — and yields exactly one segment
+covering the whole buffer.
 
 One gap this sweep did not close, and could not: `nonspeech-transient.wav`,
 a synthetic noise burst, is not separable from real speech at any threshold
@@ -528,9 +568,10 @@ regardless. So of the four non-speech fixtures this task tested, **three
 are rejected by the gate (white noise, rumble, digital silence) and one is
 not.** That is not a regression: unbiased, the full clip still decodes to
 empty and exits 1 at the third `NOTHING_TRANSCRIBED` site below, exactly as
-it did before this gate existed, because `has_speech() == true` still hands
-the recognizer the untouched original samples — a VAD-on and a `--no-vad`
-run on this clip are byte-identical, same as every other file. The
+it did before this gate existed, because one detected span in one clip
+still hands the recognizer the untouched original samples — a VAD-on and a
+`--no-vad` run on this clip are byte-identical, same as every other
+single-utterance file. The
 threshold that separates this clip from real speech does not exist in the
 range tested, and the alternative — an invented heuristic distinct from
 Silero's own decision — would risk eating genuinely short real utterances
@@ -646,7 +687,8 @@ landed on stdout, never as the primary signal.
 | `--list-models` | Print installed model names, one per line, and exit. |
 | `--vad-threshold F` | Silero VAD speech-probability threshold (default `0.2` — not Silero's own stock 0.5; see below). Out of `0.0..=1.0` is a usage error. |
 | `--vad-min-speech SECS` | Speech spans shorter than this are dropped (default `0.25`, Silero's stock value). Negative or non-finite is a usage error. |
-| `--no-vad` | Skip the VAD gate — for audio that is already segmented, or to measure accuracy against no VAD at all. Transcribe-path only; `auris serve` has no VAD flags because the gate is client-side. |
+| `--vad-min-silence SECS` | Trailing silence that ends an utterance — where one `segment` line stops and the next begins (default `0.5`, Silero's stock value, and the value `docs/latency.md`'s arithmetic assumes). Zero, negative, or non-finite is a usage error. |
+| `--no-vad` | Skip the VAD entirely — for audio that is already segmented, or to measure accuracy against no VAD at all. The whole buffer becomes one segment. Transcribe-path only; `auris serve` has no VAD flags because the VAD is client-side. |
 | `--no-daemon` | Load the recognizer in-process for this call instead of talking to a daemon; pays the ~4 s load every time. |
 | `--socket PATH` | Daemon socket path (default `$AURIS_HOME/auris.sock`). |
 | `-q, --quiet` | Suppress the progress line (stderr is already silent when not a terminal). |
@@ -734,15 +776,33 @@ must ignore any `type` it does not recognise — that is the whole extension
 mechanism. Full protocol and reasoning: `docs/streaming.md`.
 
 ```
-{"type":"segment","index":0,"text":"book a call with khora for tomorrow","start":0.0,"end":2.14}
+{"type":"speech","active":true,"at":0.51}
+{"type":"speech","active":false,"at":2.14}
+{"type":"segment","index":0,"text":"book a call with khora for tomorrow","start":0.17,"end":2.14}
 {"type":"transcript","text":"book a call with khora for tomorrow"}
 ```
 
-`segment` is one completed, corrected utterance and is never revised.
-`transcript` is always the last line on a run that produced one — the whole
-corrected text — so reading to EOF and parsing the last line is a correct
-reader on its own. A single-utterance recording produces one `segment` line
-whose text equals the `transcript` line's.
+`segment` is one completed, corrected utterance and is never revised;
+`index` counts them from 0, and `start`/`end` are that utterance's own
+speech boundaries in seconds from the start of the stream — not the bounds
+of the slice the recognizer was handed, which reaches further on both
+sides. `transcript` is always the last line on a run that produced one —
+every `segment` text joined in order — so reading to EOF and parsing the
+last line is a correct reader on its own. A single-utterance recording
+produces one `segment` line whose text equals the `transcript` line's.
+
+`speech` is the activity heartbeat `docs/streaming.md` supplies in place of
+the partial hypotheses it rejects, emitted whenever the VAD is running
+(i.e. unless `--no-vad`). `at` on the closing line is exactly the segment's
+`end` — when speech *stopped*, not when auris noticed — which is what lets
+mesa backdate its silence timer instead of starting it a whole
+`--vad-min-silence` late (`docs/latency.md`). Note the ordering: because a
+`segment` line waits for the following utterance to open, both of an
+utterance's `speech` lines are written *before* its `segment` line rather
+than around it, as the worked example in `docs/streaming.md` originally
+drew them. Nothing in the protocol was ever ordered — every line is
+self-describing, `index` orders the segments, and a reader must ignore any
+`type` it does not recognise.
 
 ## Verification
 

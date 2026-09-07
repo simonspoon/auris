@@ -253,6 +253,12 @@ sherpa-onnx, not fastidiousness. auris rejects a vocabulary file, with a
 | A boost is outside `(0.0, 8.0]` | See "Bounds". |
 | A term is empty, longer than 64 bytes, or contains control characters | A sanity bound. A 4 MB "name" is not a name. |
 
+Validation happens before any audio is read, so a rejected vocabulary file
+exits `2` regardless of what the audio turns out to contain — including
+silence, which before segmentation would have exited `1` from the energy
+gate first (README "Exit codes"). Only the WAV header is parsed earlier, so
+"not a wav file" still wins over a bad vocabulary file.
+
 Leading, trailing and doubled `/` in the *assembled* string are safe —
 sherpa-onnx drops empty segments silently (`utils.cc:137-138`) — so the join
 logic needs no guard for an empty term list.

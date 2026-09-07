@@ -1,16 +1,23 @@
-//! Asks Silero VAD whether already-16kHz-mono-f32 samples contain any
-//! speech at all (README's `--vad-*` flags, `docs/streaming.md`). This
-//! module knows nothing about the CLI or the daemon; [`Vad::has_speech`] is
-//! the one entry point `cli.rs::run_transcribe` calls, in the same spot
+//! Runs Silero VAD over already-16kHz-mono-f32 samples and reports where
+//! each utterance ends (README's `--vad-*` flags, `docs/streaming.md`).
+//! This module knows nothing about the CLI or the daemon;
+//! [`Vad::segmenter`] is the one entry point `cli.rs::run_transcribe`
+//! calls, driven chunk by chunk as audio arrives in the same spot
 //! [`crate::audio::is_silent`] already runs and immediately after it —
 //! `is_silent` stays as a free, model-free short-circuit ahead of this
 //! heavier gate (CLAUDE.md).
 //!
-//! **The VAD is a decision, not a filter.** [`Vad::has_speech`] returns a
-//! `bool`; it never trims, crops, or otherwise modifies the audio the
-//! recognizer sees. This was not the original design (task 968), and it was
-//! not a preference — two independent measurements ruled out trimming in
-//! both directions, and re-introducing it as an "optimization" without
+//! **The VAD is a decision, not a filter.** [`Segmenter::next_segment`]
+//! returns a [`Segment`] of *offsets*; it never trims, crops, copies, or
+//! otherwise hands back audio, and in particular it never returns
+//! `SpeechSegment::samples()`. The caller keeps the original buffer and
+//! decodes a slice of it whose edges are the *neighbouring utterances'*
+//! boundaries, not this utterance's — so a single-utterance recording is
+//! decoded as the whole buffer, byte for byte, exactly as it was before
+//! segmentation existed (`cli.rs`, mesa task 936). That is not a stylistic
+//! choice. It was not the original design (task 968), and it was not a
+//! preference — two independent measurements ruled out trimming in both
+//! directions, and re-introducing it as an "optimization" without
 //! re-running both sweeps would silently reopen both bugs:
 //!
 //! 1. **Trimming corrupts real speech.** The first implementation had
@@ -33,8 +40,8 @@
 //! 2. **Trimming turns a false positive into a *different* false transcript
 //!    instead of leaving it alone.** `tests/fixtures/nonspeech-transient.wav`
 //!    (a synthetic noise burst) makes Silero false-positive a confident
-//!    ~0.55 s "speech" span at essentially any threshold, so `has_speech`
-//!    is `true` for it and the recognizer runs. That part is a genuine,
+//!    ~0.55 s "speech" span at essentially any threshold, so the segmenter
+//!    finds a segment in it and the recognizer runs. That part is a genuine,
 //!    unclosed gap: unbiased, the full clip happens to decode to nothing,
 //!    but with hotword biasing — mesa's actual production configuration —
 //!    the same untouched clip decodes to a ~40-word hallucinated string of
@@ -63,9 +70,14 @@
 //!    transcript where none existed before, on top of the gap the VAD gate
 //!    itself does not close.
 //!
-//! So the recognizer now always sees the *original*, complete `samples`
-//! whenever any speech is found at all; the only thing the gate can do is
-//! refuse to run the recognizer on audio with no speech in it — exactly the
+//! So the recognizer is never handed a Silero-cut span. On a
+//! single-utterance recording it sees the *original*, complete `samples`;
+//! on a stream of several it sees a partition of that same buffer cut at
+//! utterance *starts*, so every sample is decoded exactly once and no
+//! utterance loses the acoustic context on either side of it that the
+//! measurements above showed is load-bearing. The only thing the gate can
+//! do is refuse to run the recognizer on audio with no speech in it at
+//! all — exactly the
 //! fan/cough/TTS-playback case task 968 exists for, and exactly what it
 //! delivers for the three noise fixtures it does close. One consequence
 //! worth keeping in mind: since the gate cannot make a clip's transcript
@@ -77,8 +89,9 @@
 //!
 //! Construction is separated from the decision the same way
 //! [`crate::engine::Recognizer`] separates `load` from `decode`:
-//! [`Vad::load`] pays the one-time model-load cost, and [`Vad::has_speech`]
-//! is the cheap, repeatable, `&self` call.
+//! [`Vad::load`] pays the one-time model-load cost, and [`Vad::segmenter`]
+//! is the cheap, repeatable, `&self` call that starts one fresh pass over
+//! one stream.
 
 use std::path::PathBuf;
 
@@ -107,18 +120,24 @@ const BUFFER_SECONDS: f32 = 30.0;
 /// derived.
 const MAX_SPEECH_SECONDS: f32 = 8.0;
 
-/// Seconds of trailing silence the detector waits before closing an
-/// already-open speech span. Not exposed on [`VadConfig`]: under the
-/// decision-not-filter design ([`Vad::has_speech`]) this only affects
-/// *when* a span closes, never *whether* one opens in the first place, so
-/// it cannot change the accept/reject decision at all — measured by
-/// sweeping it from 0.05 s to 0.5 s against every file in
+/// Default seconds of trailing silence the detector waits before closing
+/// an already-open speech span — Silero's own stock value, and the one
+/// `docs/latency.md` fixes for its backdating arithmetic (the decode window
+/// is `live.auto-send-ms` minus this number).
+///
+/// Under task 968's accept/reject gate this was a private constant and
+/// deliberately not a flag: it only affected *when* a span closed, never
+/// *whether* one opened, so it could not change the accept/reject outcome
+/// at all — swept from 0.05 s to 0.5 s against every file in
 /// `bench/results/acoustic-wav/` plus the marginal/noise/silence fixtures
-/// (task 968) and finding the accept/reject outcome byte-identical at
-/// every value tested. `docs/latency.md` fixes this exact value (0.5 s,
-/// stock Silero) for its own backdating arithmetic, which is reason enough
-/// to keep it fixed here rather than pick a different constant.
-const MIN_SILENCE_SECONDS: f32 = 0.5;
+/// and found byte-identical at every value. Segmentation (mesa task 936)
+/// makes it load-bearing for the first time: it is now exactly the rule for
+/// where one `segment` line ends and the next begins, so it is exposed as
+/// `--vad-min-silence`. Reconciling it with mesa's own `live.auto-send-ms`
+/// is explicitly deferred (`docs/latency.md`, "What this does not decide");
+/// 0.5 s is the interim value and the arithmetic in that document stands as
+/// written.
+pub const MIN_SILENCE_SECONDS: f32 = 0.5;
 
 /// Construction settings for [`Vad::load`]. `sample_rate` and `num_threads`
 /// are not exposed — auris only ever feeds [`crate::audio::TARGET_SAMPLE_RATE`]
@@ -132,6 +151,11 @@ pub struct VadConfig {
     pub threshold: f32,
     /// Speech spans shorter than this are dropped.
     pub min_speech: f32,
+    /// Trailing silence that closes an open span — see
+    /// [`MIN_SILENCE_SECONDS`]. This is where one utterance ends and the
+    /// next begins, so it is the one knob that changes how a stream is cut
+    /// into `segment` lines.
+    pub min_silence: f32,
 }
 
 impl Default for VadConfig {
@@ -162,6 +186,7 @@ impl Default for VadConfig {
             model: PathBuf::new(),
             threshold: 0.2,
             min_speech: 0.25,
+            min_silence: MIN_SILENCE_SECONDS,
         }
     }
 }
@@ -214,7 +239,7 @@ impl Vad {
             silero_vad: SileroVadModelConfig {
                 model: Some(cfg.model.to_string_lossy().into_owned()),
                 threshold: cfg.threshold,
-                min_silence_duration: MIN_SILENCE_SECONDS,
+                min_silence_duration: cfg.min_silence,
                 min_speech_duration: cfg.min_speech,
                 window_size: WINDOW_SIZE,
                 max_speech_duration: MAX_SPEECH_SECONDS,
@@ -229,34 +254,89 @@ impl Vad {
         Ok(Vad { inner })
     }
 
-    /// True if Silero finds at least one speech span anywhere in `samples`.
-    /// This is a decision, not a filter (see the module doc comment for
-    /// why): `samples` itself is never modified, trimmed, or returned —
-    /// the caller hands the recognizer the same, complete buffer it always
-    /// did, and only skips that call entirely when this returns `false`.
-    ///
-    /// Feeds `samples` to the detector in [`WINDOW_SIZE`] chunks and stops
-    /// as soon as a span is found — no need to keep feeding once the
-    /// decision is already yes. Draining/`pop`-ing found segments still
-    /// matters even though their contents are discarded, because the
-    /// detector's internal queue is finite.
-    ///
-    /// The detector carries state between calls (and `flush()` below forces
-    /// a final segmentation), so this resets it first — that is what makes
-    /// repeated calls on the same `Vad` independent, which is what a
-    /// `&self` method promises rather than something a caller has to
-    /// remember.
-    pub fn has_speech(&self, samples: &[f32]) -> bool {
+    /// Starts one fresh pass over one stream. Resets the detector, so
+    /// nothing from a previous pass bleeds into this one — that is what
+    /// makes a `&self` method mean what it looks like it means, rather than
+    /// something every caller has to remember to do first.
+    pub fn segmenter(&self) -> Segmenter<'_> {
         self.inner.reset();
-
-        for chunk in samples.chunks(WINDOW_SIZE as usize) {
-            self.inner.accept_waveform(chunk);
-            if !self.inner.is_empty() {
-                return true;
-            }
+        Segmenter {
+            vad: self,
+            pending: Vec::new(),
         }
-        self.inner.flush();
-        !self.inner.is_empty()
+    }
+}
+
+/// Where one closed utterance sits in the stream, in samples from the first
+/// sample ever fed to the [`Segmenter`] that produced it. Offsets only: see
+/// the module doc comment for why this deliberately does not carry the
+/// audio Silero cut out.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Segment {
+    /// First sample of the detected speech.
+    pub start: usize,
+    /// Length of the detected speech, in samples.
+    pub len: usize,
+}
+
+/// One pass of the detector over one stream, fed incrementally.
+///
+/// Silero wants exactly [`WINDOW_SIZE`] samples at a time and the audio
+/// arrives in whatever sizes the source produces, so this holds back the
+/// remainder between calls rather than letting a short tail chunk shift the
+/// window alignment — which would move every boundary after it.
+pub struct Segmenter<'a> {
+    vad: &'a Vad,
+    pending: Vec<f32>,
+}
+
+impl Segmenter<'_> {
+    /// Feeds the next arriving samples. Cheap and incremental: only whole
+    /// windows are handed to the detector, the rest waits here for the next
+    /// call.
+    pub fn accept(&mut self, samples: &[f32]) {
+        self.pending.extend_from_slice(samples);
+        let window = WINDOW_SIZE as usize;
+        let whole = self.pending.len() - self.pending.len() % window;
+        for chunk in self.pending[..whole].chunks(window) {
+            self.vad.inner.accept_waveform(chunk);
+        }
+        self.pending.drain(..whole);
+    }
+
+    /// End of stream: hands over the held-back remainder and forces the
+    /// detector to close whatever span is still open, so a recording that
+    /// ends mid-utterance still produces that utterance rather than losing
+    /// it.
+    pub fn finish(&mut self) {
+        if !self.pending.is_empty() {
+            self.vad.inner.accept_waveform(&self.pending);
+            self.pending.clear();
+        }
+        self.vad.inner.flush();
+    }
+
+    /// Pops the next closed utterance, or `None` when none has closed yet.
+    /// Draining matters even when a caller does nothing with the result:
+    /// the detector's internal queue is finite.
+    pub fn next_segment(&mut self) -> Option<Segment> {
+        let segment = self.vad.inner.front()?;
+        let found = Segment {
+            start: segment.start().max(0) as usize,
+            len: segment.n().max(0) as usize,
+        };
+        drop(segment);
+        self.vad.inner.pop();
+        Some(found)
+    }
+
+    /// True while the detector believes speech is happening right now —
+    /// sherpa-onnx's own `detected()`, computed by the pass already running
+    /// and costing no decode of any kind. This is the `speech` heartbeat
+    /// `docs/streaming.md` supplies in place of the partial hypotheses it
+    /// rejects.
+    pub fn speaking(&self) -> bool {
+        self.vad.inner.detected()
     }
 }
 
@@ -299,11 +379,28 @@ mod tests {
         crate::audio::decode(file).unwrap_or_else(|e| panic!("decode {name}: {e}"))
     }
 
+    /// The whole-buffer form of [`Vad::segmenter`], for tests that have a
+    /// complete fixture in hand rather than a live stream. Deliberately not
+    /// on `Vad` itself: the transcribe path never has a complete buffer to
+    /// start with, so an API shaped for one would be a second, unexercised
+    /// path through the detector.
+    fn segments_of(vad: &Vad, samples: &[f32]) -> Vec<Segment> {
+        let mut segmenter = vad.segmenter();
+        segmenter.accept(samples);
+        segmenter.finish();
+        let mut found = Vec::new();
+        while let Some(segment) = segmenter.next_segment() {
+            found.push(segment);
+        }
+        found
+    }
+
     #[test]
     fn config_defaults_match_the_contract() {
         let cfg = VadConfig::default();
         assert_eq!(cfg.threshold, 0.2);
         assert_eq!(cfg.min_speech, 0.25);
+        assert_eq!(cfg.min_silence, 0.5);
     }
 
     #[test]
@@ -346,7 +443,7 @@ mod tests {
             .collect();
 
         assert!(
-            !vad.has_speech(&samples),
+            segments_of(&vad, &samples).is_empty(),
             "expected no speech in broadband noise"
         );
     }
@@ -364,18 +461,18 @@ mod tests {
 
         let samples = decode_fixture("mesa-names.wav");
         assert!(
-            vad.has_speech(&samples),
+            !segments_of(&vad, &samples).is_empty(),
             "expected speech in mesa-names.wav"
         );
     }
 
-    /// `has_speech` takes `&self` and must behave as a pure, repeatable
-    /// check — nothing from one call may bleed into the next. Without the
-    /// `reset()` at the top of `has_speech`, the detector's residual state
-    /// (and the final segmentation `flush()` forces) would carry over and
+    /// [`Vad::segmenter`] takes `&self` and must behave as a pure,
+    /// repeatable check — nothing from one pass may bleed into the next.
+    /// Without the `reset()` in `segmenter`, the detector's residual state
+    /// (and the final segmentation `finish()` forces) would carry over and
     /// this would fail.
     #[test]
-    fn has_speech_is_idempotent_across_repeated_calls() {
+    fn segmentation_is_idempotent_across_repeated_passes() {
         let Some(model) = vad_model_path() else {
             return;
         };
@@ -386,13 +483,13 @@ mod tests {
         .expect("load");
 
         let samples = decode_fixture("mesa-names.wav");
-        let first = vad.has_speech(&samples);
-        let second = vad.has_speech(&samples);
+        let first = segments_of(&vad, &samples);
+        let second = segments_of(&vad, &samples);
         assert_eq!(
             first, second,
-            "has_speech produced different answers on a second call with the same input"
+            "segmenter produced different boundaries on a second pass over the same input"
         );
-        assert!(first);
+        assert!(!first.is_empty());
     }
 
     /// Locates the spike Parakeet model, same lookup as
@@ -454,7 +551,10 @@ mod tests {
 
         for name in ["nonspeech-white.wav", "nonspeech-rumble.wav"] {
             let samples = decode_fixture(name);
-            assert!(!vad.has_speech(&samples), "expected no speech in {name}");
+            assert!(
+                segments_of(&vad, &samples).is_empty(),
+                "expected no speech in {name}"
+            );
         }
     }
 
@@ -463,13 +563,14 @@ mod tests {
     ///
     /// Silero reports a confident ~0.55 s speech span in
     /// `nonspeech-transient.wav` at every threshold tested, from 0.5 down to
-    /// 0.05, so `has_speech` is `true` here and no threshold change makes it
-    /// false. Of the four non-speech fixtures, three are rejected by the gate
+    /// 0.05, so the segmenter finds a segment here and no threshold change
+    /// makes it stop. Of the four non-speech fixtures, three are rejected by the gate
     /// and this one is not (README "Exit codes").
     ///
-    /// The gate still cannot corrupt this clip: `has_speech` returns a `bool`
-    /// rather than a buffer, so the recognizer is handed the untouched
-    /// original samples and a VAD-on run is byte-identical to `--no-vad`.
+    /// The gate still cannot corrupt this clip: a [`Segment`] carries
+    /// offsets rather than a buffer, and one segment in one clip makes the
+    /// slice `cli.rs` decodes the whole buffer, so a VAD-on run is
+    /// byte-identical to `--no-vad`.
     /// That equality was confirmed against the real binary (task 968: 286
     /// bytes each way, hotword-biased) — it is deliberately NOT asserted
     /// here, because within this process both sides would be the same
@@ -486,8 +587,8 @@ mod tests {
     /// `vocabulary::looks_manufactured`, README "Exit codes") re-decodes the
     /// clip unbiased, finds nothing, and discards it — but the discarding
     /// happens at the CLI level, downstream of everything this gate does, so
-    /// nothing about *this* test's subject changed: `has_speech` is still
-    /// `true` here and the recognizer still runs.
+    /// nothing about *this* test's subject changed: a segment is still
+    /// found here and the recognizer still runs.
     ///
     /// This asserts only the detection, deliberately. Asserting the decode is
     /// empty would be asserting the CLI guard's behaviour from inside the VAD
@@ -509,7 +610,7 @@ mod tests {
 
         let samples = decode_fixture("nonspeech-transient.wav");
         assert!(
-            vad.has_speech(&samples),
+            !segments_of(&vad, &samples).is_empty(),
             "this test documents a known Silero false positive on this fixture; \
              if this now fails, Silero (or the threshold) changed for the better \
              and the module doc comment's point 2 needs re-checking, not deleting"
@@ -556,9 +657,16 @@ mod tests {
             ..Default::default()
         })
         .expect("load vad");
+        let found = segments_of(&vad, &samples);
         assert!(
-            vad.has_speech(&samples),
+            !found.is_empty(),
             "VAD rejected the marginal fixture outright — real speech was lost"
+        );
+        assert_eq!(
+            found.len(),
+            1,
+            "one utterance must stay one segment, or the slice the recognizer sees below \
+             is no longer the whole buffer this assertion is the baseline for"
         );
 
         let recognizer_cfg = crate::engine::EngineConfig {

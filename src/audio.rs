@@ -54,15 +54,19 @@ pub const TARGET_SAMPLE_RATE: u32 = 16_000;
 /// session to load, so it stays as the cheap first pass ahead of the
 /// heavier model-based gate rather than being superseded by it.
 /// `docs/streaming.md`'s Silero VAD *segmentation* (multiple `segment`
-/// lines, a `speech` heartbeat) is still future work and unrelated to
-/// either gate.
+/// lines, a `speech` heartbeat) has since shipped on top of both gates and
+/// is unrelated to either: it decides where one utterance ends and the
+/// next begins, not whether there is anything there at all. This gate runs
+/// incrementally under segmentation — `cli.rs` re-checks each arriving
+/// chunk against the windows it overlaps rather than the whole buffer at
+/// EOF, which is the same maximum over the same windows.
 const SILENCE_RMS_THRESHOLD: f32 = 1e-3;
 
 /// Window size [`is_silent`] computes the max RMS over, in samples at
 /// [`TARGET_SAMPLE_RATE`] — 30 ms, short enough that a brief burst of real
 /// speech inside an otherwise-silent buffer isn't averaged away by a
 /// longer window.
-const SILENCE_WINDOW_SAMPLES: usize = (TARGET_SAMPLE_RATE as usize * 30) / 1000;
+pub const SILENCE_WINDOW_SAMPLES: usize = (TARGET_SAMPLE_RATE as usize * 30) / 1000;
 
 /// True when the maximum RMS over any [`SILENCE_WINDOW_SAMPLES`]-sample
 /// window of `samples` is below [`SILENCE_RMS_THRESHOLD`] — see that
@@ -338,40 +342,143 @@ fn resample_to_target(input: &[f32], input_rate: u32) -> Result<Vec<f32>, AudioE
     Ok(output.take_data())
 }
 
-/// Decodes a WAV stream (already confirmed to start `RIFF`) into mono `f32`
-/// samples at [`TARGET_SAMPLE_RATE`]. Supports 16-bit PCM and 32-bit IEEE
-/// float, mono or multi-channel, at any source sample rate (design
-/// decision 1) — nothing else, since those are the only WAV variants a
-/// frontend producing WAV for auris needs.
-fn decode_wav(reader: impl Read) -> Result<Vec<f32>, AudioError> {
-    let mut wav = hound::WavReader::new(reader).map_err(map_hound_error)?;
-    let spec = wav.spec();
-    if spec.channels == 0 {
-        return Err(AudioError::Wav(hound::Error::FormatError(
-            "wav header declares zero channels",
-        )));
-    }
-    if !(MIN_SAMPLE_RATE..=MAX_SAMPLE_RATE).contains(&spec.sample_rate) {
-        return Err(AudioError::UnsupportedRate(spec.sample_rate));
-    }
+/// The reader [`WavStream`] sits on: the sniffed magic bytes replayed ahead
+/// of the size-capped remainder of the source.
+type SniffedReader<R> = std::io::Chain<Cursor<Vec<u8>>, LimitedReader<R>>;
 
-    let interleaved: Vec<f32> = match (spec.sample_format, spec.bits_per_sample) {
-        (hound::SampleFormat::Int, 16) => wav
-            .samples::<i16>()
-            .map(|s| s.map(|v| v as f32 / 32768.0).map_err(map_hound_error))
-            .collect::<Result<_, _>>()?,
-        (hound::SampleFormat::Float, 32) => wav
-            .samples::<f32>()
-            .map(|s| s.map_err(map_hound_error))
-            .collect::<Result<_, _>>()?,
-        _ => {
-            return Err(AudioError::Wav(hound::Error::Unsupported));
+/// Mono samples pulled from a [`WavStream`] per call to
+/// [`WavStream::next_chunk`] — 256 ms at [`TARGET_SAMPLE_RATE`]. Small
+/// enough that a closed utterance reaches the VAD promptly, large enough
+/// not to pay a syscall per Silero window.
+pub const READ_CHUNK_FRAMES: usize = 4096;
+
+/// A WAV stream consumed incrementally: the header is parsed up front and
+/// the body pulled in chunks as it arrives. This is what makes README
+/// "stdin"'s promise — "stdout's first byte does not wait for stdin's EOF
+/// on a multi-utterance stream" — implementable at all: the segmentation
+/// loop in `cli.rs` needs samples while the producer is still writing, and
+/// [`decode`]'s read-to-EOF shape cannot hand it any.
+///
+/// Supports 16-bit PCM and 32-bit IEEE float, mono or multi-channel, at any
+/// source sample rate (design decision 1) — nothing else, since those are
+/// the only WAV variants a frontend producing WAV for auris needs.
+///
+/// Resampling, however, is deliberately *not* incremental: rubato's FFT
+/// resampler is sized for a whole buffer, so a source that is not already
+/// at [`TARGET_SAMPLE_RATE`] is read to EOF by [`WavStream::rest_resampled`]
+/// and converted in one pass. Nothing is lost by that — a stream auris can
+/// segment live is a live capture, and every live capture that reaches
+/// auris (mesa's driver, `arecord -r 16000`) is already at 16 kHz, where no
+/// resampler runs at all.
+pub struct WavStream<R: Read> {
+    wav: hound::WavReader<SniffedReader<R>>,
+    channels: u16,
+    sample_rate: u32,
+    /// The one `(format, bits)` pair validated in [`WavStream::open`], so
+    /// [`WavStream::next_chunk`] never has to re-decide it per chunk.
+    format: hound::SampleFormat,
+    frames_read: u64,
+}
+
+impl<R: Read> WavStream<R> {
+    /// Sniffs the container from the first bytes of `reader`, then parses
+    /// and validates the WAV header. Every error [`decode`] used to produce
+    /// before it had read any audio comes from here, in the same order, so
+    /// a caller that opens the stream early still reports "not a wav file"
+    /// ahead of anything about models or vocabularies.
+    pub fn open(reader: R) -> Result<Self, AudioError> {
+        let mut limited = LimitedReader::new(reader, MAX_INPUT_BYTES);
+        let mut magic = [0u8; 8];
+        let n = fill_as_much_as_possible(&mut limited, &mut magic).map_err(map_io_error)?;
+
+        if n == 0 {
+            return Err(AudioError::NoInput);
         }
-    };
+        if n < 4 || &magic[0..4] != b"RIFF" {
+            return Err(AudioError::NotWav(describe_non_wav(&magic[..n])));
+        }
+        let chained = Cursor::new(magic[..n].to_vec()).chain(limited);
 
-    let mono = downmix_to_mono(&interleaved, spec.channels);
-    check_duration(&mono, spec.sample_rate)?;
-    resample_to_target(&mono, spec.sample_rate)
+        let wav = hound::WavReader::new(chained).map_err(map_hound_error)?;
+        let spec = wav.spec();
+        if spec.channels == 0 {
+            return Err(AudioError::Wav(hound::Error::FormatError(
+                "wav header declares zero channels",
+            )));
+        }
+        if !(MIN_SAMPLE_RATE..=MAX_SAMPLE_RATE).contains(&spec.sample_rate) {
+            return Err(AudioError::UnsupportedRate(spec.sample_rate));
+        }
+        let format = match (spec.sample_format, spec.bits_per_sample) {
+            (hound::SampleFormat::Int, 16) => hound::SampleFormat::Int,
+            (hound::SampleFormat::Float, 32) => hound::SampleFormat::Float,
+            _ => return Err(AudioError::Wav(hound::Error::Unsupported)),
+        };
+
+        Ok(WavStream {
+            wav,
+            channels: spec.channels,
+            sample_rate: spec.sample_rate,
+            format,
+            frames_read: 0,
+        })
+    }
+
+    /// The source's own sample rate, read from the header — not
+    /// [`TARGET_SAMPLE_RATE`]. The caller needs it to decide whether
+    /// [`WavStream::next_chunk`] can be streamed straight into the VAD or
+    /// whether the whole stream has to go through the resampler first.
+    pub fn sample_rate(&self) -> u32 {
+        self.sample_rate
+    }
+
+    /// Up to `frames` more mono samples, at the source's own rate. An empty
+    /// vec means end of stream — this blocks until that many frames have
+    /// arrived or the source ends, exactly as any `Read` does, so a live
+    /// capture simply produces chunks at the rate it is spoken.
+    pub fn next_chunk(&mut self, frames: usize) -> Result<Vec<f32>, AudioError> {
+        let wanted = frames * self.channels as usize;
+        let interleaved: Vec<f32> = match self.format {
+            hound::SampleFormat::Int => self
+                .wav
+                .samples::<i16>()
+                .take(wanted)
+                .map(|s| s.map(|v| v as f32 / 32768.0).map_err(map_hound_error))
+                .collect::<Result<_, _>>()?,
+            hound::SampleFormat::Float => self
+                .wav
+                .samples::<f32>()
+                .take(wanted)
+                .map(|s| s.map_err(map_hound_error))
+                .collect::<Result<_, _>>()?,
+        };
+
+        let mono = downmix_to_mono(&interleaved, self.channels);
+        self.frames_read += mono.len() as u64;
+        // The duration cap is enforced as the stream runs rather than only
+        // at EOF: a live capture has no EOF, so a check that waited for one
+        // would never fire and [`MAX_DECODED_SECONDS`] would bound nothing.
+        if self.frames_read > MAX_DECODED_SECONDS as u64 * self.sample_rate as u64 {
+            return Err(AudioError::TooLong);
+        }
+        Ok(mono)
+    }
+
+    /// Reads whatever is left of the stream and returns it mono at
+    /// [`TARGET_SAMPLE_RATE`] — the read-to-EOF shape, kept for the file
+    /// path and for any source that needs resampling.
+    pub fn rest_resampled(&mut self) -> Result<Vec<f32>, AudioError> {
+        let mut mono = Vec::new();
+        loop {
+            let chunk = self.next_chunk(READ_CHUNK_FRAMES)?;
+            if chunk.is_empty() {
+                break;
+            }
+            mono.extend_from_slice(&chunk);
+        }
+        check_duration(&mono, self.sample_rate)?;
+        resample_to_target(&mono, self.sample_rate)
+    }
 }
 
 /// Recognises a wrong-container magic in `head` and names it, or falls back
@@ -413,23 +520,13 @@ fn fill_as_much_as_possible(reader: &mut impl Read, buf: &mut [u8]) -> std::io::
 }
 
 /// Decodes audio of unknown container from `reader`, sniffing the first few
-/// bytes to tell WAV from everything else. This is the stdin/file path
-/// (README "stdin"): auris does not know in advance what it has been
-/// handed, so it looks.
+/// bytes to tell WAV from everything else. This is the read-to-EOF form of
+/// [`WavStream`], kept because most callers (the daemon, every test, every
+/// benchmark) have a complete file in hand and want one buffer back; the
+/// transcribe path drives [`WavStream`] itself so it can segment while the
+/// audio is still arriving.
 pub fn decode(reader: impl Read) -> Result<Vec<f32>, AudioError> {
-    let mut limited = LimitedReader::new(reader, MAX_INPUT_BYTES);
-    let mut magic = [0u8; 8];
-    let n = fill_as_much_as_possible(&mut limited, &mut magic).map_err(map_io_error)?;
-
-    if n == 0 {
-        return Err(AudioError::NoInput);
-    }
-    if n >= 4 && &magic[0..4] == b"RIFF" {
-        let chained = Cursor::new(magic[..n].to_vec()).chain(limited);
-        decode_wav(chained)
-    } else {
-        Err(AudioError::NotWav(describe_non_wav(&magic[..n])))
-    }
+    WavStream::open(reader)?.rest_resampled()
 }
 
 /// Decodes raw PCM of an already-known layout — no container, no sniffing.

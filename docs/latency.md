@@ -109,11 +109,16 @@ That 500 ms was an assumption when this document was written, flagged
 rather than buried because every number in this section is derived from it.
 **Task 968 (the VAD gate) resolved it: `MIN_SILENCE_SECONDS` is 0.5 s**
 (`src/vad.rs`), Silero's own stock default, configured verbatim — auris
-does not override it. It is a private constant, not a CLI flag: it was
-swept from 0.05 s to 0.5 s and found to have zero effect on the gate's
-accept/reject decision at every value, because the gate only asks whether a
-speech span ever opens, never when one closes — so there is nothing here
-for a flag to tune. The arithmetic in this section therefore stands as
+does not override it. It was a private constant rather than a CLI flag at
+that point: it was swept from 0.05 s to 0.5 s and found to have zero effect
+on the gate's accept/reject decision at every value, because the gate only
+asks whether a speech span ever opens, never when one closes — so there was
+nothing there for a flag to tune. **Task 936 (segmentation) changed that,
+and it is now `--vad-min-silence`**, because it is exactly the rule for
+where one `segment` line stops and the next begins; the default is
+unchanged at 0.5 s, so the arithmetic here still holds for a default run,
+and a caller who moves the flag moves the window with it exactly as the
+counterfactual below describes. The arithmetic in this section therefore stands as
 written; nothing here needs to be redone. (Task 968 shipped the gate, not
 the segmentation this document's `min_silence_duration`-vs-`live.auto-send-ms`
 reconciliation is about — see "What this does not decide" below, which is

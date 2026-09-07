@@ -34,16 +34,47 @@ span Silero (wrongly) flagged. So the gate this task shipped deliberately
 diverges from mesa task 968's literal wording ("drop non-speech spans...
 transcribe the speech spans only") to hold its actual acceptance
 criterion — no accuracy loss on real speech — which trimming would have
-violated. Output shape is unchanged either way: one buffer in, one
-transcript out, same as before; there is still no `speech` heartbeat, no
+violated. Output shape was unchanged either way: one buffer in, one
+transcript out, same as before; there was still no `speech` heartbeat, no
 multiple `segment` lines, no endpointing. `is_silent` stays ahead of the VAD
 gate as a free, model-free short-circuit — pure arithmetic that catches
 digital silence for nothing — because it answers a different, cheaper
 question than the VAD does ("is there any signal at all" versus "is there
 any speech in it"), and the VAD is not free: it is a model load and a decode
 pass, worth skipping when the cheap check already has the answer. See
-README "Exit codes" and `--vad-*` for what shipped; the segmentation and
-line-protocol design in the rest of this document remains forward-looking.
+README "Exit codes" and `--vad-*` for what that task shipped.
+
+**Update, mesa task 936: segmentation itself has now shipped**, and the
+rest of this document describes running code rather than a plan. Three
+things about it are worth stating here because they are departures from
+what is written below, not restatements of it.
+
+1. **The decision-not-filter finding survived intact, and constrains where
+   the cuts fall.** A closed utterance's decode slice runs from where the
+   previous utterance's slice ended to where the *next* utterance starts —
+   a partition of the original buffer, never a crop to the span Silero
+   found. One utterance therefore still decodes as the whole buffer, byte
+   for byte. Measured on the 40-clip corpus, biased, segmenting against
+   `--no-vad`: 33 of 40 byte-identical, 7 differing only in where sentence
+   breaks land, and scored, WER 6.32% -> 6.12% with name F1 unchanged.
+2. **A `segment` line is therefore written one utterance late** — its right
+   edge is not known until the next utterance opens. A reader must not turn
+   that into "every line but the last flushes early": when a stream ends
+   without trailing silence after its final utterance, the last *two*
+   `segment` lines both land at or after EOF, because the second-to-last is
+   still waiting on the final one to open and the final one is only closed
+   by the end-of-stream flush. The `speech` lines are
+   not: they are written the moment the VAD's own `detected()` flips, which
+   is the only time a heartbeat is worth anything. So both of an
+   utterance's `speech` lines precede its `segment` line, rather than
+   bracketing it as the worked example below draws. That is a divergence
+   from the example's *ordering* only; the ignore-unknown-types rule and
+   `index` are what a reader is entitled to rely on, and neither changed.
+3. **`min_silence_duration` is now `--vad-min-silence`.** Under the gate it
+   could not change any outcome and so was not a flag; segmentation makes
+   it exactly the rule for where one utterance ends, so it is one, still
+   defaulting to 0.5 s. Reconciling that default with mesa's
+   `live.auto-send-ms` (see "What this does not decide") is still open.
 
 ## Why "streaming" had to be redefined for STT
 
@@ -223,8 +254,9 @@ Every object carries a `type` discriminator. Line types:
   It exists so that the simplest possible reader — read to EOF, parse the
   last line — is a *correct* reader, which is exactly what mesa's
   held-recording model wants today.
-- `speech` — the activity heartbeat described above. Emitted only on a
-  segmented stream; a single-file one-shot run emits none.
+- `speech` — the activity heartbeat described above. Emitted whenever the
+  VAD is running, which is every run that does not pass `--no-vad`; a
+  `--no-vad` run is one unsegmented buffer and emits none.
 
 The rule that makes this extensible has to be stated as an obligation on
 readers, not a note: **a reader MUST ignore any line whose `type` it does
@@ -238,9 +270,10 @@ A run that produces no transcript writes nothing at all to stdout and exits
 transcript, one line per completed utterance.
 
 Day one — one WAV, one utterance — this emits exactly one `segment` line
-and one `transcript` line. The general shape is what ships from the first
-commit; segmentation adds line *volume*, not line *kinds*, except for
-`speech`.
+and one `transcript` line, and that is still what it emits now that
+segmentation has shipped: one utterance is one segment. The general shape
+is what shipped from the first commit; segmentation added line *volume*,
+not line *kinds*, except for `speech`.
 
 ## The divergence from the recorded decision — `type`, not `is_final`
 

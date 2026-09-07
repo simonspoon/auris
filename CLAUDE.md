@@ -25,11 +25,12 @@ path both fetch a missing default model, and now the VAD model too, unless
 `--no-download` is given), and a post-decode manufactured-vocabulary guard
 that re-decodes unbiased and discards a hallucinated transcript when
 hotword biasing manufactures one out of non-speech audio
-(`vocabulary::looks_manufactured`, `src/cli.rs`, task 970). Not built: VAD
-*segmentation* and streaming — the `speech` heartbeat, multiple `segment`
-lines, endpointing (`docs/streaming.md`) — and post-ASR correction
-(`docs/correction.md`); task 968 shipped a gate,
-not segmentation, and output is still one transcript, exactly as before. The
+(`vocabulary::looks_manufactured`, `src/cli.rs`, task 970), and VAD
+*segmentation* — incremental reads from stdin (`audio::WavStream`), one
+`segment` line per utterance flushed before stdin's EOF, the `speech`
+heartbeat, and `--vad-min-silence` (`src/vad.rs`'s `Segmenter`,
+`src/cli.rs`, task 936). Not built: post-ASR correction
+(`docs/correction.md`). The
 invariants below describe what auris **must** do, read from `README.md` —
 the contract written before the code — not what it currently does. Check the
 source before relying on any of it.
@@ -121,14 +122,20 @@ them — decide which, don't let them silently drift.
   codes", `docs/daemon.md`). It is a fixed-threshold energy check, not VAD,
   and it stays: the Silero VAD gate below is a heavier, model-based check
   that answers a different question, not a replacement for this free one.
-- **Audio with no speech at all never reaches the recognizer, but audio
-  that does is decoded untouched.** Immediately after `is_silent`, the
+- **Audio with no speech at all never reaches the recognizer, and audio
+  that does is decoded in slices cut at *neighbouring* utterance
+  boundaries — never at its own.** Immediately after `is_silent`, the
   Silero VAD gate (`src/vad.rs`, task 968) is a **decision, not a filter**:
   no speech span found anywhere in the buffer means the recognizer never
   runs (a fan, a cough, or TTS playback that passes the energy check gets
   caught here); any speech span found means the recognizer decodes the
   original samples, byte-for-byte, exactly as `is_silent` saw them — never
-  the trimmed spans Silero found. An earlier version fed the recognizer
+  the trimmed spans Silero found. Task 936 added segmentation on top of
+  that rule without weakening it: a closed utterance's decode slice runs
+  from where the previous utterance's slice ended to where the *next*
+  utterance starts, a partition of the original buffer rather than a crop
+  of it, which is why one utterance still decodes as the whole buffer and
+  why a `segment` line is written one utterance late. An earlier version fed the recognizer
   only the concatenated speech spans and was reverted: Silero's span edges
   are tuned for segmentation, not for an offline recognizer's acoustic
   context, and trimming both corrupted real speech (35 of 40 benchmark
@@ -141,11 +148,13 @@ them — decide which, don't let them silently drift.
   README); `--vad-min-silence` does not exist as a flag, because it cannot
   affect this gate's accept/reject decision at any value (it only affects
   when a span closes, and the gate only asks whether one ever opened) — it
-  is a private constant in `src/vad.rs` instead. The gate is client-side,
+  was a private constant in `src/vad.rs` — until segmentation made it
+  load-bearing and it became a flag after all (task 936). The gate is client-side,
   like `is_silent`, so it covers the daemon path too; `--no-vad` is the
-  escape hatch. This is a single-utterance gate, not the segmentation
-  `docs/streaming.md` describes — no `speech` heartbeat, no multiple
-  `segment` lines — that remains unbuilt.
+  escape hatch. This was a single-utterance gate; `docs/streaming.md`'s
+  segmentation — the `speech` heartbeat and multiple `segment` lines — was
+  built on top of it by task 936, which also promoted `--vad-min-silence`
+  to a real flag because it now decides where one utterance ends.
 - **A biased transcript that the recognizer only manufactured is caught
   after the fact, not trusted.** With `--vocabulary-file` loaded, non-speech
   audio that clears both gates above can still make the recognizer invent a

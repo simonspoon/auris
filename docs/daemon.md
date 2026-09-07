@@ -196,7 +196,24 @@ resample, socket round-trip and teardown, all included. It is *not*
 comparable to 0.082 and should never be quoted as if it were. The ~0.03 RTF
 between rows 1 and 2 is roughly 450–550 ms per utterance of per-call process
 and IPC overhead — spawn, clap parse, connect, WAV decode and resample — not
-a colder recognizer. It is also the overhead row 3 pays identically, which is
+a colder recognizer.
+
+**These numbers are per *invocation*, and segmentation (mesa task 936)
+changed the cadence underneath them: the client now opens a connection,
+sends one slice, reads the reply and tears the connection down **once per
+closed utterance**, not once per run.** The one-off costs in that
+450–550 ms — process spawn, clap parse, WAV parse, resample — are still
+paid once per invocation; only connect, round-trip and teardown now repeat
+per utterance, and `Request::Transcribe` is unchanged, so the daemon side
+is the same work it always did. What that repetition costs has **not been
+measured** and no number here should be re-derived to cover it. What *was*
+measured (task 936, by hand, not by a test): on a 3-utterance fixture the
+daemon path's stdout is **byte-identical** to a `--no-daemon` run — all
+three `segment` lines, same indices, same `start`/`end`, same text, plus
+the `speech` and `transcript` lines — and the first `segment` line flushed
+**3.15 s before stdin reached EOF**, so the extra round trips do not cost
+the streaming property. Nothing in `tests/` exercises the daemon path for
+segmentation, so that result is not defended against regression. It is also the overhead row 3 pays identically, which is
 why row 2 against row 3 is the fair comparison and row 2 against the spike is
 not.
 

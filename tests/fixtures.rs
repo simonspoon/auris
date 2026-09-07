@@ -389,3 +389,191 @@ fn manufactured_vocabulary_guard_does_not_affect_real_speech() {
     assert!(normalised.contains("qorvex"), "got {text:?}");
     assert!(normalised.contains("helios"), "got {text:?}");
 }
+
+/// `utterances` copies of `plain.wav` separated by `gap_seconds` of digital
+/// silence: one WAV, several utterances, built in memory so the repo does
+/// not carry a second multi-utterance fixture whose only content is the
+/// first one repeated. The gap is comfortably longer than
+/// `--vad-min-silence` (0.5 s), so the VAD closes an utterance in each one
+/// rather than running them together.
+fn multi_utterance_wav(utterances: usize, gap_seconds: f32) -> Vec<u8> {
+    let mut reader =
+        hound::WavReader::open(fixtures_dir().join("plain.wav")).expect("open plain.wav");
+    let spec = reader.spec();
+    let speech: Vec<i16> = reader
+        .samples::<i16>()
+        .collect::<Result<_, _>>()
+        .expect("read plain.wav");
+    let gap = vec![0i16; (spec.sample_rate as f32 * gap_seconds) as usize];
+
+    let mut cursor = std::io::Cursor::new(Vec::new());
+    {
+        let mut writer = hound::WavWriter::new(&mut cursor, spec).expect("wav writer");
+        for utterance in 0..utterances {
+            if utterance > 0 {
+                for &sample in &gap {
+                    writer.write_sample(sample).expect("write gap");
+                }
+            }
+            for &sample in &speech {
+                writer.write_sample(sample).expect("write speech");
+            }
+        }
+        writer.finalize().expect("finalize wav");
+    }
+    cursor.into_inner()
+}
+
+/// The acceptance criterion mesa task 936 exists for, and the one README
+/// "stdin" states as a promise: **stdout's first byte does not wait for
+/// stdin's EOF on a multi-utterance stream.** A consumer that reads auris's
+/// stdout incrementally while still writing audio (mesa's driver does
+/// exactly this) deadlocks if auris only ever writes at EOF.
+///
+/// This asserts on *timing*, not on line count: a test that only counted
+/// four `segment` lines would pass just as well if all four were written
+/// after the pipe closed, which is the bug. The audio is fed at real time
+/// (16 kHz, 16-bit mono is 32 000 bytes per second) so "before EOF" means
+/// what it means for a live capture, not for a file handed over slowly on
+/// purpose.
+///
+/// A `segment` line is held back until the *next* utterance opens — its
+/// right edge is the next utterance's start (`src/cli.rs`, `src/vad.rs`) —
+/// so the first line lands one utterance late by design. Four utterances,
+/// not two, so that delay is inside the stream rather than at its end.
+#[test]
+fn first_segment_line_arrives_before_stdin_eof() {
+    use std::io::BufRead;
+    use std::time::{Duration, Instant};
+
+    let Some(model_dir) = spike_model_dir() else {
+        return;
+    };
+    let tmp = symlinked_model_dir(&model_dir);
+    let home = tempfile::tempdir().expect("tempdir");
+    let wav = multi_utterance_wav(4, 1.0);
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_auris"))
+        .args([
+            "--no-daemon",
+            "--quiet",
+            "-m",
+            &tmp.path().to_string_lossy(),
+        ])
+        .env("AURIS_HOME", home.path())
+        .env_remove("AURIS_MODEL")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn auris");
+
+    // Reads stdout in a loop rather than draining to EOF, and stamps the
+    // arrival of the first line — the whole subject of this test.
+    let stdout = child.stdout.take().expect("child stdout");
+    let (tx, rx) = std::sync::mpsc::channel();
+    let reader = std::thread::spawn(move || {
+        let mut lines = std::io::BufReader::new(stdout).lines();
+        let first = lines.next();
+        let _ = tx.send(Instant::now());
+        let mut collected: Vec<String> = first.into_iter().filter_map(Result::ok).collect();
+        collected.extend(lines.map_while(Result::ok));
+        collected
+    });
+
+    let mut stdin = child.stdin.take().expect("child stdin");
+    for chunk in wav.chunks(16_000) {
+        stdin.write_all(chunk).expect("write stdin");
+        std::thread::sleep(Duration::from_millis(500));
+    }
+    let stdin_closed_at = Instant::now();
+    drop(stdin);
+
+    let first_line_at = rx
+        .recv_timeout(Duration::from_secs(180))
+        .expect("auris wrote nothing to stdout at all");
+    let lines = reader.join().expect("stdout reader thread");
+    let out = child.wait_with_output().expect("wait for auris");
+
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        lines.len() >= 2,
+        "expected one line per utterance, got {lines:?}"
+    );
+    assert!(
+        first_line_at < stdin_closed_at,
+        "the first stdout line arrived {:?} after stdin closed; auris is still \
+         buffering the whole stream (lines: {lines:?})",
+        first_line_at.duration_since(stdin_closed_at)
+    );
+}
+
+/// The other half of mesa task 936's acceptance: a consumer that stops
+/// reading stdout must not wedge auris. Rust ignores SIGPIPE, so the write
+/// comes back `EPIPE` rather than killing the process — which means every
+/// write site has to notice, or auris grinds on decoding audio nobody will
+/// read (or, worse, blocks forever on a full pipe).
+///
+/// The close happens before any audio is written, so it lands ahead of the
+/// first `segment` line whatever the decode timing is. Exit 0: text was
+/// produced and committed as far as auris could commit it, and a nonzero
+/// exit is the one thing mesa reads as failure (README "Exit codes").
+#[test]
+fn a_consumer_that_stops_reading_stdout_does_not_wedge_auris() {
+    use std::time::{Duration, Instant};
+
+    let Some(model_dir) = spike_model_dir() else {
+        return;
+    };
+    let tmp = symlinked_model_dir(&model_dir);
+    let home = tempfile::tempdir().expect("tempdir");
+    let wav = std::fs::read(fixtures_dir().join("plain.wav")).expect("read plain.wav");
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_auris"))
+        .args([
+            "--no-daemon",
+            "--quiet",
+            "-m",
+            &tmp.path().to_string_lossy(),
+        ])
+        .env("AURIS_HOME", home.path())
+        .env_remove("AURIS_MODEL")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn auris");
+
+    // The consumer goes away.
+    drop(child.stdout.take().expect("child stdout"));
+
+    // May itself fail with EPIPE if auris has already exited — that is a
+    // pass, not a failure, so the result is deliberately discarded.
+    let mut stdin = child.stdin.take().expect("child stdin");
+    let _ = stdin.write_all(&wav);
+    drop(stdin);
+
+    let deadline = Instant::now() + Duration::from_secs(180);
+    let status = loop {
+        match child.try_wait().expect("try_wait") {
+            Some(status) => break status,
+            None => {
+                if Instant::now() > deadline {
+                    let _ = child.kill();
+                    panic!("auris did not exit after its stdout consumer went away");
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+        }
+    };
+    assert_eq!(
+        status.code(),
+        Some(0),
+        "expected a clean exit, not a signal or a failure: {status:?}"
+    );
+}
