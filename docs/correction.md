@@ -12,10 +12,10 @@ correction rather than invented from scratch.**
 and its "What it does not fix" section already names the gap directly:
 `khora` is never produced by any engine or configuration tested in this spike
 — whisper or parakeet, prompted or biased. Every parakeet run at every boost
-hears "qora"; raising khora's boost alone changes nothing (`spike/RESULTS.md`
+hears "qora"; raising khora's boost alone changes nothing (`docs/spike-results.md`
 §6, "What this does not fix"). Task 959 later found the one regime where the
 model *will* spell it — `khora` standing alone as an address, at a boost of
-6.5 or more, on some voices (`spike/RESULTS.md` §8) — which narrows the claim
+6.5 or more, on some voices (`docs/spike-results.md` §8) — which narrows the claim
 without weakening it: every fixture in this spike is a sentence, and in a
 sentence the term is still never produced. Biasing pushes the acoustic model
 toward a vocabulary; it cannot conjure a token sequence the model never
@@ -25,7 +25,7 @@ misses are all
 near-homophones — "qora", "corvex", "aurus" — not garbage.
 
 **The two layers are not independent, and biasing still has a job to do.**
-Task 959 (`spike/RESULTS.md` §8) swept `khora`'s boost against the two
+Task 959 (`docs/spike-results.md` §8) swept `khora`'s boost against the two
 fixtures that actually contain the word. Below a boost of 6.5 the recognizer
 renders u07's slot as "qor"; at 6.5 and above it renders "qora". Three
 characters against four, and the difference is decisive here: this pass
@@ -42,7 +42,7 @@ loses `khora` in u07.
 
 ## The decision to port mesa, not invent a new algorithm
 
-The correction pass in `spike/harness/vocab_correct.py` is a faithful port of
+The correction pass in `bench/harness/vocab_correct.py` is a faithful port of
 four things from the sibling project mesa: `soundKey`, `COMMON_ENGLISH`,
 `buildVocabulary` and `correctVocabulary` in
 `frontend/src/liveRecognition.ts` (mesa task 922). mesa hit the identical
@@ -70,7 +70,7 @@ to begin with, so the two keys stay distinct.
 ## Term source: read from the hotwords file, not a separate list
 
 Terms are read from the same file that feeds the recognizer's hotword
-biasing, `spike/fixtures/hotwords.txt` (`read_hotword_terms`), so the
+biasing, `bench/fixtures/hotwords.txt` (`read_hotword_terms`), so the
 correction vocabulary and the biasing vocabulary cannot drift apart — adding
 or removing a project name only ever requires touching one file. Format is
 one `term :boost` line per term (blank lines and `#` comments ignored); the
@@ -103,7 +103,7 @@ second parser that happens to agree with the first today.
 The natural instinct is to guard against over-correction with a real
 dictionary rather than a hand-curated list. That was tried and rejected: it
 is unusable in both directions on this vocabulary. It contains `cora` — a
-real mishearing of `khora` (`spike/RESULTS.md` §3: base.en/small.en
+real mishearing of `khora` (`docs/spike-results.md` §3: base.en/small.en
 no-prompt both render `khora` as "Cora") that the pass must be free to
 correct, so guarding on its presence would silently disable the correction
 this pass exists to make. It also *lacks* `cores` — an ordinary English word
@@ -158,7 +158,7 @@ affects what a person actually reads.
 ## The second divergence: an edit-distance gate on top of mesa's sound key
 
 mesa's sound-key match, used alone, is not safe at dictionary scale. An
-adversarial review built the vocabulary from the real `spike/fixtures/hotwords.txt`
+adversarial review built the vocabulary from the real `bench/fixtures/hotwords.txt`
 and scanned `/usr/share/dict/web2` (every word of at least 4 letters not
 already in `COMMON_ENGLISH`) for anything the sound-key rule would rewrite.
 It found **321 ordinary words**, producing real, damaging sentence rewrites:
@@ -191,7 +191,7 @@ no third-party dependency, `score.py` was not touched or imported). This is
 a pure tightening — it can only reject a correction the sound-key rule would
 have made, never approve one that rule would not have — so it cannot
 introduce a new miss that wasn't already possible. Verified by hand and by
-selftest: every real mishearing in `spike/RESULTS.md` §3 survives (`corvex`
+selftest: every real mishearing in `docs/spike-results.md` §3 survives (`corvex`
 is 1 edit from `qorvex`; `Aorus` is 2 edits from `auris`; `Kakoro` is 1 edit
 from `kokoro`), while `hall`/`hole`/`hill` (4+ edits from `helios`),
 `cross`/`cherry`/`chair`/`query` (4+ edits from `khora`), and
@@ -202,7 +202,7 @@ to plausibly be the same word misheard.
 **One accepted loss:** mesa's own `chorus` → `khora` fold (same sound key,
 edit distance 3) no longer fires for auris. mesa wants that correction for
 its own reasons; auris does not need it — `chorus` never appears as a
-mishearing in `spike/RESULTS.md` §3 for any engine tested, and it is itself
+mishearing in `docs/spike-results.md` §3 for any engine tested, and it is itself
 ordinary English that should not be silently rewritten. Documented and
 asserted in `--selftest`.
 
@@ -244,7 +244,7 @@ nothing measured here.
 both gates, and this is a genuine, unresolved tension, reported rather than
 hidden:** `cora`, `kora`, and `auras` are each *also* a literal ASR
 misdecode this pass must keep fixing. `spike/results/raw/whisper-medium.en-noprompt.tsv`
-u07 literally reads "blocked on **Kora**"; `spike/RESULTS.md` §3 quotes
+u07 literally reads "blocked on **Kora**"; `docs/spike-results.md` §3 quotes
 "Cora" (base.en no-prompt) and "auras" (medium.en no-prompt, "under
 **auras**") as real, observed mishearings of `khora` and `auris`
 respectively, and the selftest already requires `auras`→`auris` and
@@ -304,12 +304,12 @@ unexplained:
   algorithm working as designed, not a bug — a rewrite here would be exactly
   the kind of "correct" a word to something that wasn't said that this
   feature is built to avoid.
-- **`Corex` → `qorvex` is not corrected** (`spike/RESULTS.md` §3, base.en
+- **`Corex` → `qorvex` is not corrected** (`docs/spike-results.md` §3, base.en
   no-prompt: "wire up Corex"). `Corex` folds to `krk`; `qorvex` folds to
   `krvk`. The middle consonant that `qorvex`'s "v" contributes has no
   counterpart in "Corex," so the keys diverge. Same category as `Oris`: a
   correct refusal, not a defect.
-- **`khora` heard as "core of"** (`spike/RESULTS.md` §3, base.en/small.en
+- **`khora` heard as "core of"** (`docs/spike-results.md` §3, base.en/small.en
   no-prompt) is not corrected. This is a mishearing of one word as *two*
   words. The pass operates token-wise, matching whole `[A-Za-z']+` spans —
   same as mesa's — so a name split across a word boundary is structurally
@@ -317,7 +317,7 @@ unexplained:
 - **u06's doubled "Helios" is not, and cannot be, corrected.** The reference
   text contains a deliberate pun — "transcribed helios **as hell EOS**
   again" — and every engine benchmarked hears "hell EOS" as a second,
-  correctly-spelled "Helios" (`spike/RESULTS.md` §2 already flagged this:
+  correctly-spelled "Helios" (`docs/spike-results.md` §2 already flagged this:
   helios was never actually a clean control case). A lexical pass only has
   one lever — nudging a *misspelling* toward a known term's spelling — and
   the second "Helios" is not misspelled. Removing a token that is already
@@ -393,11 +393,11 @@ pun, not to extend the correction algorithm to chase a fixture artifact.
 
 ## Where this lives
 
-- `spike/harness/vocab_correct.py` — the pass (module + CLI), including
+- `bench/harness/vocab_correct.py` — the pass (module + CLI), including
   `--selftest`.
 - `spike/harness/run_correction.sh` — regenerates the table above from
   `spike/results/raw/` and `spike/results/hotwords/`.
 - `spike/results/corrected/` — corrected transcripts and scores, one pair per
   config.
-- `spike/RESULTS.md` §7 — the same table in the benchmark's own results
+- `docs/spike-results.md` §7 — the same table in the benchmark's own results
   document.

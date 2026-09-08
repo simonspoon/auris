@@ -217,7 +217,7 @@ fn not_audio_is_a_clean_error() {
 ///
 /// The manifest's `mesa-names` line is "hey qorvex hey helios", chosen after
 /// testing pairs from the full production vocabulary
-/// (`spike/fixtures/hotwords.txt`: mesa, auris, khora, qorvex, helios,
+/// (`bench/fixtures/hotwords.txt`: mesa, auris, khora, qorvex, helios,
 /// kokoro) for exactly this contrast:
 /// - `qorvex` + `helios`: unbiased "Hey Corvex Hey Halios.", biased "Hey
 ///   qorvex hey helios." — both names absent unbiased, both present biased.
@@ -232,11 +232,11 @@ fn not_audio_is_a_clean_error() {
 ///
 /// `khora` is deliberately NOT in this fixture, and that is a finding in its
 /// own right, not a phrasing failure to paper over. Task 959 characterised
-/// it (`spike/RESULTS.md` §8), and the axis is grammatical embedding rather
+/// it (`docs/spike-results.md` §8), and the axis is grammatical embedding rather
 /// than length: once `khora` sits inside an ordinary English clause — after
 /// a preposition, under a determiner, or as the subject of a verb — it is
 /// never produced, at any boost the vocabulary bounds allow, on either
-/// synthesiser. `spike/fixtures/wav/u02.wav` decodes "Korra" unbiased and
+/// synthesiser. `bench/fixtures/wav/u02.wav` decodes "Korra" unbiased and
 /// "qora" biased. Where it stands alone as an address or label it can land,
 /// but only at a boost of 6.5 or above and only for some voices, usually
 /// damaging a neighbour ("hey khora" becomes "He khora"). The kokoro-rs
@@ -254,7 +254,7 @@ fn mesa_names_lands_only_when_biased() {
     };
     let tmp = symlinked_model_dir(&model_dir);
     let vocabulary_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("spike/fixtures/hotwords.txt")
+        .join("bench/fixtures/hotwords.txt")
         .to_string_lossy()
         .into_owned();
     let wav = std::fs::read(fixtures_dir().join("mesa-names.wav")).expect("read mesa-names.wav");
@@ -324,7 +324,7 @@ fn manufactured_vocabulary_transcript_yields_no_transcript() {
     };
     let tmp = symlinked_model_dir(&model_dir);
     let vocabulary_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("spike/fixtures/hotwords.txt")
+        .join("bench/fixtures/hotwords.txt")
         .to_string_lossy()
         .into_owned();
     let model = tmp.path().to_string_lossy().into_owned();
@@ -362,7 +362,7 @@ fn manufactured_vocabulary_guard_does_not_affect_real_speech() {
     };
     let tmp = symlinked_model_dir(&model_dir);
     let vocabulary_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("spike/fixtures/hotwords.txt")
+        .join("bench/fixtures/hotwords.txt")
         .to_string_lossy()
         .into_owned();
     let model = tmp.path().to_string_lossy().into_owned();

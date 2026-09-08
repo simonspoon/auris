@@ -22,7 +22,7 @@ correct one biased:
 auris --no-daemon -q -m spike/models/parakeet bench/fixtures/u02-16h38-marginal.wav
   -> exit 1, "auris: nothing transcribed; no speech in the audio"
 auris --no-daemon -q -m spike/models/parakeet \
-      --vocabulary-file spike/fixtures/hotwords.txt \
+      --vocabulary-file bench/fixtures/hotwords.txt \
       bench/fixtures/u02-16h38-marginal.wav
   -> exit 0, "mesa at a note to khora that headless mode is the default now."
 ```

@@ -1,5 +1,11 @@
 # ASR Engine Benchmark Results
 
+This is the write-up of the original engine spike, kept for the numbers it
+records. The `spike/` tree it refers to (harness scripts, raw result TSVs,
+synthetic fixtures) was removed from the repository before publication; the
+files the current bench harness still needs moved to `bench/fixtures/hotwords.txt`,
+`bench/fixtures/wav/` and `bench/harness/vocab_correct.py`.
+
 Date: 2026-08-27
 Host: Intel Core i9-9880H @ 2.30GHz, x86_64, 16 logical cores, 32 GB RAM, macOS Darwin 25.5.0. CPU only — no Metal, no CUDA. All engines run at 8 threads.
 
@@ -248,7 +254,7 @@ set out to fix.
 ### Best config: per-word boosts
 
 sherpa accepts a per-line boost (`khora :6.5`), so the hard terms can be pushed
-without paying the WER cost on the easy ones. `spike/fixtures/hotwords.txt`:
+without paying the WER cost on the easy ones. `bench/fixtures/hotwords.txt`:
 
 ```
 mesa :3.0
@@ -323,7 +329,7 @@ an unrelated slot, not the model correctly hearing either real occurrence.)
 
 Section 6 established that `khora` is never produced correctly by any engine
 or configuration tested here, prompted or biased — the gap left after biasing
-is a spelling problem, not an acoustic one. `spike/harness/vocab_correct.py`
+is a spelling problem, not an acoustic one. `bench/harness/vocab_correct.py`
 closes it with a lexical correction pass over the six hotword terms, run on
 decoded transcript text, ported from mesa's task-922 vocabulary correction
 (`frontend/src/liveRecognition.ts`), with one addition on top of the port: a
@@ -476,7 +482,7 @@ held at its production `:5.0`:
 
 u07's slot is a three-character fragment, "qor", everywhere below 6.5, and
 becomes the four-character "qora" exactly at 6.5. That boundary matters
-because `spike/harness/vocab_correct.py` skips any token shorter than four
+because `bench/harness/vocab_correct.py` skips any token shorter than four
 characters (`if len(token) < 4`, the min-token-length gate ported from
 mesa). Run directly against both strings, the pass leaves "blocked on qor"
 untouched and rewrites "blocked on qora" to "blocked on khora". **6.5 is the
@@ -502,7 +508,7 @@ from `parakeet_hotwords_bench.py`. The scorer is the same in all three cases,
 and the uniform-3.0 config was re-decoded through the binary as a check — it
 reproduces `hot_bpe_3.0.tsv` byte-for-byte — so the rows are comparable.
 
-`spike/fixtures/hotwords.txt` is therefore left unchanged, with 6.5 now
+`bench/fixtures/hotwords.txt` is therefore left unchanged, with 6.5 now
 resting on this measurement rather than on whoever first raised it.
 
 ### What this does not fix
@@ -531,12 +537,12 @@ survive the change even though `src/vocabulary.rs` would not.
     [--vocabulary-file FILE] <input.wav>
 ```
 
-The `u01`-`u08` inputs are the committed `spike/fixtures/wav/`. The carrier
+The `u01`-`u08` inputs are the committed `bench/fixtures/wav/`. The carrier
 ladder's own clips were scratch and are **not** committed: they were made
 with `say -v Samantha` piped through `afconvert -f WAVE -d LEI16@16000 -c 1`,
 and with kokoro-rs resampled to 16 kHz mono, one clip per carrier phrase
 listed above. The correction pass was run as
-`spike/harness/vocab_correct.py --hotwords spike/fixtures/hotwords.txt`.
+`bench/harness/vocab_correct.py --hotwords bench/fixtures/hotwords.txt`.
 
 Section 1's caveat applies here in full and is worth repeating, because this
 section leans harder on individual transcripts than any other: these are TTS

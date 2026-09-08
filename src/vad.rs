@@ -635,7 +635,7 @@ mod tests {
         };
         let tmp = symlinked_model_dir(&model_dir);
         let hotwords_path =
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("spike/fixtures/hotwords.txt");
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("bench/fixtures/hotwords.txt");
         assert!(hotwords_path.is_file(), "fixture hotwords file missing");
         let hotwords = std::fs::read_to_string(&hotwords_path)
             .expect("read fixture hotwords")

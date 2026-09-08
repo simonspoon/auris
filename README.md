@@ -817,7 +817,7 @@ read passages:
 | --- | --- | --- |
 | auris, no vocabulary | 62.2% | 6.52% |
 | **auris + vocabulary biasing (what ships today)** | **69.2%** | **6.32%** |
-| auris + biasing + correction pass (not in the crate — `spike/harness/vocab_correct.py`) | 89.1% | 4.89% |
+| auris + biasing + correction pass (not in the crate — `bench/harness/vocab_correct.py`) | 89.1% | 4.89% |
 
 Per-term is where the real story is. `khora` never recovers from biasing
 alone — 0.0% F1 across eight occurrences, the same zero the original 8-fixture

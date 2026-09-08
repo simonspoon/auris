@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Post-ASR vocabulary correction for auris (mesa task 922's algorithm, ported).
 
-Every engine benchmarked in `spike/RESULTS.md` (section 3) reliably mangles
+Every engine benchmarked in `docs/spike-results.md` (section 3) reliably mangles
 this project's own names: `khora` comes back as "qora"/"Quora"/"Korra"/"Cora",
 `qorvex` as "Corvex"/"korvex", `auris` as "Aurus"/"Aorus"/"auras", `kokoro` as
 "Kakoro"/"Kakaro". None of that is fixable by better prompting or hotword
@@ -50,7 +50,7 @@ word must be within edit distance 2 of the term's spelling
 (`_levenshtein(word.lower(), term) <= 2`, plain letters, no keys involved).
 This is a pure tightening -- it can only reject a correction the sound-key
 rule would have made, never add one that rule would not have -- so every
-real mishearing found in `spike/RESULTS.md` still passes (e.g. "corvex" is
+real mishearing found in `docs/spike-results.md` still passes (e.g. "corvex" is
 edit distance 1 from "qorvex"; "Aorus" is distance 2 from "auris"). What it
 newly rejects is the collateral damage above: "hall"/"hole"/"holy"/"hill" are
 each 4+ edits from "helios", "cross"/"cherry"/"chair"/"query" are 4+ edits
@@ -60,7 +60,7 @@ the same word misheard. One accepted loss from this gate: mesa's own
 "chorus" -> "khora" fold (distance 3) no longer fires under auris. mesa wants
 that correction for its own reasons; auris does not need it -- "chorus" is
 not a mishearing any engine in this benchmark ever produces (it does not
-appear in `spike/RESULTS.md` section 3), and it is itself an ordinary English
+appear in `docs/spike-results.md` section 3), and it is itself an ordinary English
 word that should not be rewritten by default. `docs/correction.md` has the
 full scan and the auris-specific COMMON_ENGLISH addendum this gate still
 needed on top.
@@ -83,7 +83,7 @@ ambiguity rule means that if two *did* ever collide on a key, the key would
 be dropped entirely rather than guessed at -- see `_selftest`.
 
 Term source: terms come from the hotwords file that also feeds the recognizer
-(`spike/fixtures/hotwords.txt` by default), so the correction vocabulary and
+(`bench/fixtures/hotwords.txt` by default), so the correction vocabulary and
 the biasing vocabulary can never drift apart. `read_hotword_terms` parses one
 `term :boost` line per term and discards the boost -- only the term list is
 shared, not the tuning.
@@ -98,7 +98,7 @@ import sys
 
 # --- term source -----------------------------------------------------------
 
-DEFAULT_HOTWORDS_PATH = "spike/fixtures/hotwords.txt"
+DEFAULT_HOTWORDS_PATH = "bench/fixtures/hotwords.txt"
 
 
 def read_hotword_terms(path):
@@ -270,7 +270,7 @@ def build_vocabulary(terms):
 # required correction, not just block collateral damage: "cora" and "kora"
 # (both literal `khora` misdecodes seen in the raw whisper transcripts, e.g.
 # spike/results/raw/whisper-medium.en-noprompt.tsv u07 "blocked on Kora"),
-# and "auras" (a literal `auris` misdecode, spike/RESULTS.md section 3,
+# and "auras" (a literal `auris` misdecode, docs/spike-results.md section 3,
 # whisper medium.en no-prompt: "under auras"). Each is also an ordinary
 # English word (a person's name, a musical instrument, the plural of
 # "aura"), so this pass will occasionally rewrite a genuine use of one of
@@ -462,7 +462,7 @@ def _selftest():
         sentence = f"we talked about the {word} yesterday"
         assert correct_text(sentence, vocab) == sentence, word
 
-    # 2. Real mishearings, from spike/RESULTS.md section 3, are fixed.
+    # 2. Real mishearings, from docs/spike-results.md section 3, are fixed.
     for bad, good in [
         ("qora", "khora"), ("Quora", "khora"), ("Korra", "khora"), ("Cora", "khora"),
         ("Corvex", "qorvex"), ("korvex", "qorvex"),

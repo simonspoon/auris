@@ -129,9 +129,9 @@ rise, at 1.0 s it is 1000 ms and `max_speech_duration = 8.0` **fails** at
 the 2x safety factor (8 s x 0.164 = 1312 ms > 1000 ms). The structural
 argument — that auris's work fits inside a wait mesa already performs —
 survives any of those values. The specific cap does not. At the
-measured warm RTF of 0.082 (`spike/RESULTS.md` §6, parakeet + per-word
+measured warm RTF of 0.082 (`docs/spike-results.md` §6, parakeet + per-word
 hotwords) that decodes a final segment of up to **18.3 s** at no cost. But
-`spike/RESULTS.md` and `docs/engine.md` both warn the fixtures are macOS
+`docs/spike-results.md` and `docs/engine.md` both warn the fixtures are macOS
 `say` TTS and the absolute numbers are a floor, so apply a 2x safety
 factor: at RTF 0.164 the 1500 ms window covers **9.1 s**. Therefore set
 `max_speech_duration = 8.0` on the Silero VAD — 8 s x 0.164 = 1312 ms,
@@ -173,7 +173,7 @@ being asked to buy off, so there is no reason to want them.
 ## Process warmth — the stated position
 
 **Warm, mandatory, and it is a property of the contract rather than an
-optimisation.** Cold load is ~4000 ms (`docs/engine.md`; `spike/RESULTS.md`
+optimisation.** Cold load is ~4000 ms (`docs/engine.md`; `docs/spike-results.md`
 line 60 — model load ~4 s regardless of clip length, dominated by the 652
 MB encoder) — **13x the entire 300 ms budget on its own** — and it would
 land on every single utterance. The ~4 s the docs commit to is load plus
@@ -184,7 +184,7 @@ figure to budget against, since it is what an utterance arriving at a cold
 process actually waits.
 
 Even at the lower figure the conclusion does not move: 2.854 s is still
-9.5x the budget. `spike/RESULTS.md` already puts the
+9.5x the budget. `docs/spike-results.md` already puts the
 number on it: spawned per utterance, parakeet's effective RTF is 0.634
 against 0.087 warm, and the whole speed argument evaporates.
 `docs/engine.md` reached the same conclusion from the accuracy side; the

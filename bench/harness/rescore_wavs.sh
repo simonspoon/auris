@@ -26,8 +26,8 @@
 # were measured under; a parallel rerun here would no longer be comparable
 # to them):
 #   1. auris-plain-<suffix>            -- no vocabulary file
-#   2. auris-vocab-<suffix>             -- --vocabulary-file spike/fixtures/hotwords.txt
-#   3. auris-vocab-corrected-<suffix>   -- config 2 through spike/harness/vocab_correct.py
+#   2. auris-vocab-<suffix>             -- --vocabulary-file bench/fixtures/hotwords.txt
+#   3. auris-vocab-corrected-<suffix>   -- config 2 through bench/harness/vocab_correct.py
 #
 # This script is decode-and-score ONLY -- it does not touch latency. Run
 # bench/harness/latency.sh separately if a latency number against this WAV
@@ -50,7 +50,7 @@ HARNESS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BENCH="$(cd "$HARNESS/.." && pwd)"
 REPO="$(cd "$BENCH/.." && pwd)"
 REF_TSV="$BENCH/corpus/utterances.tsv"
-HOTWORDS_FILE="$REPO/spike/fixtures/hotwords.txt"
+HOTWORDS_FILE="$REPO/bench/fixtures/hotwords.txt"
 MODEL_DIR="$REPO/spike/models/parakeet"
 RESULTS="$BENCH/results"
 mkdir -p "$RESULTS"
@@ -179,8 +179,8 @@ decode_config "auris-vocab" --vocabulary-file "$HOTWORDS_FILE"
 score_config "auris-vocab"
 
 # --- config 3: config 2's transcripts through vocab_correct.py -------------
-echo ">>> correcting auris-vocab-$SUFFIX through spike/harness/vocab_correct.py"
-python3 "$REPO/spike/harness/vocab_correct.py" --hotwords "$HOTWORDS_FILE" \
+echo ">>> correcting auris-vocab-$SUFFIX through bench/harness/vocab_correct.py"
+python3 "$REPO/bench/harness/vocab_correct.py" --hotwords "$HOTWORDS_FILE" \
   "$RESULTS/auris-vocab-$SUFFIX.tsv" > "$RESULTS/auris-vocab-corrected-$SUFFIX.tsv"
 score_config "auris-vocab-corrected"
 

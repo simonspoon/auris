@@ -4,10 +4,10 @@
 # Runs three configs SEQUENTIALLY (never in parallel -- parallelism poisons
 # timings), each via `auris --no-daemon` against spike/models/parakeet:
 #   1. auris-plain            -- no vocabulary file (unbiased baseline)
-#   2. auris-vocab             -- --vocabulary-file spike/fixtures/hotwords.txt
+#   2. auris-vocab             -- --vocabulary-file bench/fixtures/hotwords.txt
 #                                  (what the crate ships today)
 #   3. auris-vocab-corrected   -- config 2's transcripts passed through
-#                                  spike/harness/vocab_correct.py. This
+#                                  bench/harness/vocab_correct.py. This
 #                                  correction pass is NOT in the Rust crate --
 #                                  it lives only in the spike harness (see the
 #                                  "correction pass" grep note this script
@@ -35,7 +35,7 @@ BENCH="$(cd "$HARNESS/.." && pwd)"
 REPO="$(cd "$BENCH/.." && pwd)"
 WAV_DIR="$BENCH/corpus/wav"
 REF_TSV="$BENCH/corpus/utterances.tsv"
-HOTWORDS_FILE="$REPO/spike/fixtures/hotwords.txt"
+HOTWORDS_FILE="$REPO/bench/fixtures/hotwords.txt"
 MODEL_DIR="$REPO/spike/models/parakeet"
 RESULTS="$BENCH/results"
 mkdir -p "$RESULTS"
@@ -51,7 +51,7 @@ if grep -rl "fn correct_text\|fn sound_key\|fn soundKey" "$REPO/src" >/dev/null 
   echo "!!! found a correction-pass implementation under src/ -- claim in this script's header is now false" >&2
 else
   echo "    confirmed: no correct_text/sound_key implementation in src/ -- the correction pass" \
-       "lives only in spike/harness/vocab_correct.py (src/vocabulary.rs says so in its own" \
+       "lives only in bench/harness/vocab_correct.py (src/vocabulary.rs says so in its own" \
        "doc comment: \"The post-ASR correction pass (docs/correction.md) today lives outside" \
        "the crate, as the spike vocab_correct.py\")"
 fi
@@ -105,8 +105,8 @@ decode_config "auris-vocab" --vocabulary-file "$HOTWORDS_FILE"
 score_config "auris-vocab"
 
 # --- config 3: config 2's transcripts through vocab_correct.py -------------
-echo ">>> correcting auris-vocab through spike/harness/vocab_correct.py"
-python3 "$REPO/spike/harness/vocab_correct.py" --hotwords "$HOTWORDS_FILE" \
+echo ">>> correcting auris-vocab through bench/harness/vocab_correct.py"
+python3 "$REPO/bench/harness/vocab_correct.py" --hotwords "$HOTWORDS_FILE" \
   "$RESULTS/auris-vocab.tsv" > "$RESULTS/auris-vocab-corrected.tsv"
 score_config "auris-vocab-corrected"
 

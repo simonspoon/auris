@@ -5,7 +5,7 @@
 # Measures the CLIENT process wall-clock (spawn, WAV read, socket round
 # trip, decode, teardown) via python3 time.perf_counter() around
 # subprocess.run, not the shell `time` builtin. Every call passes
-# --vocabulary-file spike/fixtures/hotwords.txt.
+# --vocabulary-file bench/fixtures/hotwords.txt.
 #
 # Warm pass: start `auris serve`, wait for `auris status` to report ready,
 # sleep 2s so model load is definitely not counted, do 3 discarded warm-up
@@ -25,7 +25,7 @@ BENCH="$(cd "$HARNESS/.." && pwd)"
 REPO="$(cd "$BENCH/.." && pwd)"
 WAV_DIR="$BENCH/corpus/wav"
 REF_TSV="$BENCH/corpus/utterances.tsv"
-HOTWORDS_FILE="$REPO/spike/fixtures/hotwords.txt"
+HOTWORDS_FILE="$REPO/bench/fixtures/hotwords.txt"
 MODEL_DIR="$REPO/spike/models/parakeet"
 RESULTS="$BENCH/results"
 mkdir -p "$RESULTS"

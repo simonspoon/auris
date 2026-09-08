@@ -29,7 +29,7 @@ It does not subsume 922. Two reasons, and both are load-bearing:
   decision.
 - Biasing alone does not close the gap even in auris. `khora` is never
   produced by any engine or boost tested (`docs/engine.md`,
-  `spike/RESULTS.md` §6), so auris runs its own port of 922's algorithm after
+  `docs/spike-results.md` §6), so auris runs its own port of 922's algorithm after
   decoding — `docs/correction.md`. Biasing and correction are two halves of
   one feature, which is why they read one file.
 
@@ -167,7 +167,7 @@ The `:score` value is accepted in **(0.0, 8.0]** and defaults to the global,
 3.0. 3.0 is the right value for an ordinary term; the one term measured to
 need more is `khora`, at 6.5.
 
-That 6.5 is a threshold, not a licence to escalate. `spike/RESULTS.md` §8
+That 6.5 is a threshold, not a licence to escalate. `docs/spike-results.md` §8
 sweeps it: `khora` is never spelled correctly in a sentence at *any* boost
 this range allows, so the boost is not buying the term — it is buying the
 *length* of the misdecode. Below 6.5 the recognizer renders u07's slot as
@@ -178,7 +178,7 @@ on the wrong side of that line, and 8.0 recovers nothing 6.5 does not. So
 raise a term above 3.0 only with a measurement of that term saying what the
 extra buys, and expect the answer to be a step rather than a slope.
 
-The upper guard rail is not arbitrary. `spike/RESULTS.md`'s uniform sweep shows
+The upper guard rail is not arbitrary. `docs/spike-results.md`'s uniform sweep shows
 the transcript coming apart as the boost rises — 4.0% WER at scores 1 through
 3.5, 9.3% at 5, **22.0% at 6, and 69.3% at 7** — and the gate table above shows
 runaway repetition once the *global* gets large. Note those are uniform sweeps,

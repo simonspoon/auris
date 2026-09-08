@@ -935,7 +935,7 @@ mod tests {
 
     fn decode_fixture(name: &str) -> Vec<f32> {
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("spike/fixtures/wav")
+            .join("bench/fixtures/wav")
             .join(name);
         let file = std::fs::File::open(&path).unwrap_or_else(|e| panic!("open {name}: {e}"));
         crate::audio::decode(file).unwrap_or_else(|e| panic!("decode {name}: {e}"))

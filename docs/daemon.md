@@ -138,8 +138,8 @@ swap.
 Host: same as `docs/engine.md`/`docs/latency.md` (Intel Core i9-9880H,
 macOS, CPU only), quiet at the time of the run. Produced 2026-08-28 by
 `spike/harness/warm_daemon_bench.sh` against the 8 fixtures in
-`spike/fixtures/wav/` (45.429 s total audio) with
-`spike/fixtures/hotwords.txt`.
+`bench/fixtures/wav/` (45.429 s total audio) with
+`bench/fixtures/hotwords.txt`.
 
 | | RTF | per-call |
 |---|---|---|
@@ -147,7 +147,7 @@ macOS, CPU only), quiet at the time of the run. Produced 2026-08-28 by
 | through the warm daemon, end-to-end client wall clock | 0.101 – 0.103 | first utterance 542 – 557 ms, remaining 7 avg 575 – 590 ms |
 | `--no-daemon`, in-process load every call | 0.49 – 0.57 | 2.5 – 3.4 s each |
 
-Spike baselines for comparison (`spike/RESULTS.md` §6/§4): 0.082 warm
+Spike baselines for comparison (`docs/spike-results.md` §6/§4): 0.082 warm
 decode-only, 0.634 spawned-per-utterance.
 
 Read these carefully, because the three rows answer different questions and

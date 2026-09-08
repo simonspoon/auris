@@ -49,7 +49,7 @@ itself. So the corpus remains synthetic throughout this document, and:
   engine vs engine, biasing vs correction, warm vs cold. Those orderings
   should survive real speech even as the absolute numbers move.
 
-This is the same caveat `spike/RESULTS.md` carries, for the same reason, and
+This is the same caveat `docs/spike-results.md` carries, for the same reason, and
 it is the single largest threat to this document's conclusions.
 `bench/corpus/record.sh` re-records the same 40 sentences in a real voice —
 it accepts individual ids (`record.sh u09 u10`) because 40 in one sitting is
@@ -177,7 +177,7 @@ first made:
 
 **Biasing alone does not recover `khora`.** At 40 utterances and eight
 occurrences of the term, the number is the same 0.0 the spike found at
-eight utterances: `spike/RESULTS.md` §6 and §8 predicted exactly this, and
+eight utterances: `docs/spike-results.md` §6 and §8 predicted exactly this, and
 a corpus five times larger did not soften it. What biasing does is decide
 *what the model produces instead* — "qora" and "qor" rather than something
 unrecoverable — and the correction pass then repairs it to 76.9. That is
@@ -186,7 +186,7 @@ the two-layer argument in `docs/correction.md`, measured at scale:
 repairable, not an escalation.
 
 **The correction pass is not in the crate.** It lives only as
-`spike/harness/vocab_correct.py`; `src/vocabulary.rs` says so in its module
+`bench/harness/vocab_correct.py`; `src/vocabulary.rs` says so in its module
 docs, and grepping `src/` confirms it. So the row auris actually ships
 today is 69.2% on the clean corpus (61.3% acoustic), and the 89.1%/79.1%
 rows are a promise about the port, not a current capability. Stated plainly
@@ -225,7 +225,7 @@ engine hearing clean audio.
 Within auris, biasing and correction still move WER in the same direction
 as on the clean corpus: biasing −1.5pp (13.4 → 11.9), correction a further
 −1.1pp (11.9 → 10.8). WER never regressed in any config, on either corpus,
-matching `spike/RESULTS.md` §7.
+matching `docs/spike-results.md` §7.
 
 ## 3. Punctuation
 
@@ -469,7 +469,7 @@ python3 bench/harness/detect_bleed.py bench/corpus/utterances.tsv \
     bench/results/webspeech-acoustic-raw.tsv
 
 # 7. vocabulary correction pass, and scoring, over the Web Speech transcripts
-python3 spike/harness/vocab_correct.py \
+python3 bench/harness/vocab_correct.py \
     bench/results/webspeech-acoustic-raw.tsv > bench/results/webspeech-acoustic-corrected.tsv
 python3 bench/harness/score.py bench/corpus/utterances.tsv \
     bench/results/webspeech-acoustic-raw.tsv

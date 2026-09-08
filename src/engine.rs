@@ -303,7 +303,7 @@ mod tests {
 
     fn fixture_wav(name: &str) -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("spike/fixtures/wav")
+            .join("bench/fixtures/wav")
             .join(name)
     }
 
@@ -412,7 +412,7 @@ mod tests {
         };
         let tmp = symlinked_model_dir(&model_dir);
         let hotwords_file =
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("spike/fixtures/hotwords.txt");
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("bench/fixtures/hotwords.txt");
         assert!(hotwords_file.is_file(), "fixture hotwords file missing");
 
         let with_hotwords_cfg = EngineConfig {
@@ -459,7 +459,7 @@ mod tests {
         };
         let tmp = symlinked_model_dir(&model_dir);
         let hotwords_path =
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("spike/fixtures/hotwords.txt");
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("bench/fixtures/hotwords.txt");
         let hotwords_contents =
             std::fs::read_to_string(&hotwords_path).expect("read fixture hotwords file");
         // The per-stream separator is `/`; the file's separator is a
@@ -507,7 +507,7 @@ mod tests {
         );
     }
 
-    /// Task 951's decode-only warm RTF, measured the way `spike/RESULTS.md`
+    /// Task 951's decode-only warm RTF, measured the way `docs/spike-results.md`
     /// SS6/SS4 measured its 0.082 baseline: one `Recognizer::load`, then
     /// decode all 8 fixtures with the production per-word hotwords string,
     /// summing decode time only (no process spawn, no socket round-trip, no
@@ -545,7 +545,7 @@ mod tests {
         let recognizer = Recognizer::load(&cfg).expect("load");
 
         let hotwords_path =
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("spike/fixtures/hotwords.txt");
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("bench/fixtures/hotwords.txt");
         let hotwords_contents =
             std::fs::read_to_string(&hotwords_path).expect("read fixture hotwords file");
         let inline_hotwords = hotwords_contents

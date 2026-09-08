@@ -13,7 +13,7 @@ to be false.
 
 ## The measurement
 
-Full data: `spike/RESULTS.md` (task 947, §6 addendum from task 948), rescored
+Full data: `docs/spike-results.md` (task 947, §6 addendum from task 948), rescored
 under the corrected name metric from task 949. Eight dictation fixtures,
 45.43 s, containing mesa's own names. "Name F1" is alignment-based precision and
 recall over {mesa, auris, khora, qorvex, helios, kokoro} — a name only counts
@@ -56,7 +56,7 @@ heard `khora` as `qorvex`. No parakeet run at a usable boost inserted a single
 name that was not spoken.
 
 Per-word boosts are what make it usable, since the strength that fixes the hard
-terms wrecks the easy ones if applied uniformly (`spike/fixtures/hotwords.txt`):
+terms wrecks the easy ones if applied uniformly (`bench/fixtures/hotwords.txt`):
 
 ```
 mesa :3.0
@@ -89,7 +89,7 @@ required regardless of engine — the misses are all near-homophones ("qora",
 them. That is now a first-class part of the design, not a fallback.
 
 **Implemented, task 950: see `docs/correction.md` and
-`spike/harness/vocab_correct.py`.** The chosen config (`tuned`, parakeet +
+`bench/harness/vocab_correct.py`.** The chosen config (`tuned`, parakeet +
 per-word hotwords) goes from 83.3% to 96.3% name F1 with the pass applied,
 while WER also improves, 4.0% → 2.0%.
 

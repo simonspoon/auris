@@ -395,7 +395,7 @@ with its vocabulary file. Without the middle column, auris's win would
 partly just be "auris gets a correction pass and Web Speech doesn't" rather
 than a real difference between the two engines on the hotword vocabulary.
 
-The correction pass is `spike/harness/vocab_correct.py` -- mesa task 922's
+The correction pass is `bench/harness/vocab_correct.py` -- mesa task 922's
 `correctVocabulary`, ported (see `docs/correction.md`). It's the exact same
 script `bench/harness/run_auris.sh` runs over auris's own vocabulary-biased
 transcripts to produce `auris-vocab-corrected.tsv`, so running it over a
@@ -404,8 +404,8 @@ engines -- neither gets a pass tuned to its own failure modes.
 
 ```bash
 # webspeech-raw.tsv -> corrected, using the same hotword term list auris uses
-python3 spike/harness/vocab_correct.py \
-  --hotwords spike/fixtures/hotwords.txt \
+python3 bench/harness/vocab_correct.py \
+  --hotwords bench/fixtures/hotwords.txt \
   bench/results/webspeech-raw.tsv > bench/results/webspeech-corrected.tsv
 
 # score both, alongside auris's own bench/results/auris-vocab*.score.json

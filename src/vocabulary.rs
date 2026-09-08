@@ -471,7 +471,7 @@ mod tests {
     }
 
     /// The production term list used in mesa task 970's measurement table
-    /// (`spike/fixtures/hotwords.txt`, inlined here so this test doesn't
+    /// (`bench/fixtures/hotwords.txt`, inlined here so this test doesn't
     /// depend on the model spike being present — same convention as
     /// `hotwords_string_matches_the_production_fixture_shape` above).
     fn task_970_vocabulary() -> Vocabulary {
@@ -561,7 +561,7 @@ mod tests {
 
     #[test]
     fn hotwords_string_matches_the_production_fixture_shape() {
-        // spike/fixtures/hotwords.txt, inlined here so this test doesn't
+        // bench/fixtures/hotwords.txt, inlined here so this test doesn't
         // depend on the model spike being present.
         let file = "mesa :3.0\nauris :3.0\nkhora :6.5\nqorvex :5.0\nhelios :3.0\nkokoro :3.0\n";
         let v = Vocabulary::parse(file).expect("parse");
@@ -629,16 +629,16 @@ mod tests {
 
     fn decode_fixture(name: &str) -> Vec<f32> {
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("spike/fixtures/wav")
+            .join("bench/fixtures/wav")
             .join(name);
         let file = std::fs::File::open(&path).unwrap_or_else(|e| panic!("open {name}: {e}"));
         crate::audio::decode(file).unwrap_or_else(|e| panic!("decode {name}: {e}"))
     }
 
     /// The production term list (docs/vocabulary.md's "Before and after"
-    /// example, and `spike/fixtures/hotwords.txt`).
+    /// example, and `bench/fixtures/hotwords.txt`).
     fn production_vocabulary() -> Vocabulary {
-        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("spike/fixtures/hotwords.txt");
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("bench/fixtures/hotwords.txt");
         Vocabulary::load(&path).expect("load production vocabulary")
     }
 

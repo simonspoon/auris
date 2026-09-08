@@ -612,7 +612,7 @@ def _selftest():
     # Extend to a full babble run: u01-u07 are the real parakeet decode from
     # spike/results/hotwords/hot_bpe_7.0.tsv (contextual biasing pushed to
     # score 7.0, where the beam starts emitting mesa terms as filler), and
-    # u08 is the score-10 transcript quoted in spike/RESULTS.md section 6.
+    # u08 is the score-10 transcript quoted in docs/spike-results.md section 6.
     # References are the real ones from spike/fixtures/utterances.tsv. This
     # is the primary "scores badly" demonstration -- observed new F1 is
     # 0.4286 (P=0.3103, R=0.6923), vs 0.6923 under the old recall-only
