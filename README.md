@@ -47,12 +47,16 @@ nobody should split it into a workspace on reflex.
 One binary, nothing bundled inside it: everything auris needs at runtime is
 either linked into the executable or downloaded once into `~/.cache/auris`.
 
-**auris is not published anywhere yet — no remote, no release, no formula.**
-`simonspoon/tap` (`Formula/khora.rb`, `loki.rb`, `mesa.rb`, `qorvex.rb`, and
-a dozen more) is where it will live, in the shape those formulas already
-have — a prebuilt binary per platform off a GitHub release — but neither the
-release nor the formula exists today. Building from source, from the repo
-directly, is the only install path:
+**Homebrew** (macOS and Linux, Apple Silicon and Intel):
+
+```sh
+brew install simonspoon/tap/auris
+```
+
+That installs a prebuilt binary from the matching GitHub release; pushing a
+`v*` tag builds the four binaries and updates `Formula/auris.rb` in
+`simonspoon/homebrew-tap` automatically. To build from source instead, from
+the repo root:
 
 ```sh
 scripts/install.sh
